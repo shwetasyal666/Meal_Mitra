@@ -1,29 +1,63 @@
-name: Flutter CI
+name: 🚀 Release Please & Flutter Build
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  build:
+  release-please:
     runs-on: ubuntu-latest
-
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v3
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          release-type: simple
+          path: .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Flutter
+  build-and-upload:
+    runs-on: macos-latest
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    
+    steps:
+      - name: 🔄 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.32.5'
           channel: 'stable'
-          cache: true
 
-      - name: Install dependencies
+      - name: 📦 Install dependencies
         run: flutter pub get
 
-      - name: Verify analysis
+      - name: 🧪 Analyze code
         run: flutter analyze
 
-      - name: Build Web
-        run: flutter build web --release
+      - name: 🛠️ Build APK
+        run: flutter build apk --release
+
+      - name: 🛠️ Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: 📁 Zip iOS Runner.app
+        run: |
+          cd build/ios/iphoneos
+          zip -r Runner.zip Runner.app
+
+      - name: 🚀 Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/ios/iphoneos/Runner.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
