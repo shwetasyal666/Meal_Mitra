@@ -3,15 +3,24 @@ import 'dart:io' show Platform;
 import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Set to `true` to use the local development server.
+/// Set to `false` to use the production Render backend.
+const bool kUseLocalBackend = false;
+
+/// Production backend URL (Render).
+/// Update this after deploying to Render.
+const String kProductionBaseUrl = 'https://mealmitra-backend-pnov.onrender.com';
+
+/// Local dev server URL.
+String get _localBaseUrl =>
+    Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+
 final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient();
 });
 
 class ApiClient {
-  // Use 10.0.2.2 for Android emulator, localhost for iOS/macOS/desktop.
-  final String baseUrl = Platform.isAndroid
-      ? 'http://10.0.2.2:3000'
-      : 'http://localhost:3000';
+  final String baseUrl = kUseLocalBackend ? _localBaseUrl : kProductionBaseUrl;
   String? authToken;
 
   void setToken(String token) {
