@@ -1,5 +1,5 @@
 name: mealmitra
-description: "A new Flutter project."
+description: "Your AI Nutrition Companion"
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -25,6 +25,34 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   mocktail: ^1.0.5
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.6
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/
+
+# ─── Launcher Icons Config ─────────────────────────────────
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/app_logo.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/app_logo.png"
+  min_sdk_android: 21
+
+# ─── Native Splash Config ──────────────────────────────────
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: "assets/images/splash_logo.png"
+  color_dark: "#0D1B2A"
+  image_dark: "assets/images/splash_logo.png"
+  android_12:
+    color: "#FFFFFF"
+    icon_background_color: "#FFFFFF"
+    image: "assets/images/app_logo.png"
+    color_dark: "#0D1B2A"
+    icon_background_color_dark: "#0D1B2A"
+    image_dark: "assets/images/app_logo.png"
+
