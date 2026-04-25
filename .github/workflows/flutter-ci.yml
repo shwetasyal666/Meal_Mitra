@@ -56,14 +56,6 @@ jobs:
       - name: 🛠️ Build APK
         run: flutter build apk --release
 
-      - name: 🛠️ Build iOS (no codesign)
-        run: flutter build ios --release --no-codesign
-
-      - name: 📁 Zip iOS Runner.app
-        run: |
-          cd build/ios/iphoneos
-          zip -r Runner.zip Runner.app
-
       - name: 🚀 Upload Release Assets
         if: ${{ needs.release-please.outputs.release_created }}
         uses: softprops/action-gh-release@v2
@@ -71,6 +63,5 @@ jobs:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/ios/iphoneos/Runner.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
