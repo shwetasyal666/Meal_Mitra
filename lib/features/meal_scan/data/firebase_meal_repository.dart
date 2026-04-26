@@ -21,7 +21,11 @@ class FirebaseMealRepository implements MealScanRepository {
     final imageUrl = await _uploadToCloudinary(imageFile);
 
     // 2. Client-side AI Analysis
-    final aiResult = await _analyzeImageWithGemini(imageFile, mealType, imageUrl);
+    final aiResult = await _analyzeImageWithGemini(
+      imageFile,
+      mealType,
+      imageUrl,
+    );
 
     // 3. Save to Firestore
     final data = aiResult.toMap();
@@ -44,11 +48,12 @@ class FirebaseMealRepository implements MealScanRepository {
   }
 
   Future<String> _uploadToCloudinary(File file) async {
-    final uri = Uri.parse('https://api.cloudinary.com/v1_1/${AppConfig.cloudinaryCloudName}/image/upload');
+    final uri = Uri.parse(
+      'https://api.cloudinary.com/v1_1/${AppConfig.cloudinaryCloudName}/image/upload',
+    );
     final request = http.MultipartRequest('POST', uri)
       ..fields['upload_preset'] = AppConfig.cloudinaryUploadPreset
       ..files.add(await http.MultipartFile.fromPath('file', file.path));
-
     final response = await request.send();
     final responseBody = await response.stream.bytesToString();
 
@@ -56,23 +61,26 @@ class FirebaseMealRepository implements MealScanRepository {
       final json = jsonDecode(responseBody);
       return json['secure_url'];
     } else {
+      print('Failed to upload image: $responseBody');
       throw Exception('Failed to upload image: $responseBody');
     }
   }
 
-  Future<MealAnalysis> _analyzeImageWithGemini(File file, String mealType, String imageUrl) async {
+  Future<MealAnalysis> _analyzeImageWithGemini(
+    File file,
+    String mealType,
+    String imageUrl,
+  ) async {
     final apiKey = AppConfig.geminiApiKey;
     if (apiKey.isEmpty) {
       throw Exception('Gemini API key is not configured.');
     }
 
-    final model = GenerativeModel(
-      model: 'gemini-1.5-flash',
-      apiKey: apiKey,
-    );
+    final model = GenerativeModel(model: 'gemini-2.5-flash', apiKey: apiKey);
 
     final bytes = await file.readAsBytes();
-    final prompt = '''
+    final prompt =
+        '''
 Analyze this meal for $mealType. Provide estimated details. 
 Return ONLY valid JSON matching this schema:
 {
@@ -93,7 +101,7 @@ Return ONLY valid JSON matching this schema:
 
     final response = await model.generateContent([
       Content.text(prompt),
-      Content.data('image/jpeg', bytes)
+      Content.data('image/jpeg', bytes),
     ]);
 
     String text = response.text ?? '{}';
@@ -106,12 +114,12 @@ Return ONLY valid JSON matching this schema:
 
     try {
       final json = jsonDecode(text) as Map<String, dynamic>;
-      
+
       // Calculate derived macros from individual items if present
       int totalProtein = 0;
       int totalCarbs = 0;
       int totalFat = 0;
-      
+
       final detectedItems = json['detectedItems'] as List<dynamic>? ?? [];
       for (var item in detectedItems) {
         totalProtein += (item['protein'] as num?)?.toInt() ?? 0;
