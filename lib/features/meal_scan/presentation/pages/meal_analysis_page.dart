@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
 import 'package:mealmitra/features/meal_scan/presentation/controllers/meal_scan_controller.dart';
+import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 
 class MealAnalysisPage extends ConsumerWidget {
   const MealAnalysisPage({super.key});
@@ -93,7 +94,7 @@ class MealAnalysisPage extends ConsumerWidget {
                       ),
                       const Spacer(),
                       TextButton(
-                        onPressed: () {},
+                        onPressed: () => _showEditSheet(context, ref, result),
                         child: const Text('Edit Scan', 
                           style: TextStyle(color: Color(0xFF027B3D), fontWeight: FontWeight.bold)
                         ),
@@ -285,6 +286,130 @@ class MealAnalysisPage extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showEditSheet(BuildContext context, WidgetRef ref, dynamic result) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _EditItemsSheet(result: result);
+      },
+    );
+  }
+}
+
+class _EditItemsSheet extends ConsumerStatefulWidget {
+  final dynamic result;
+
+  const _EditItemsSheet({required this.result});
+
+  @override
+  ConsumerState<_EditItemsSheet> createState() => _EditItemsSheetState();
+}
+
+class _EditItemsSheetState extends ConsumerState<_EditItemsSheet> {
+  late List<DetectedFoodItem> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = List<DetectedFoodItem>.from(widget.result.detectedItems);
+  }
+
+  void _save() {
+    final originalResult = widget.result;
+    
+    // Recalculate total calories based on updated quantities
+    int newTotalCals = 0;
+    for (final item in _items) {
+      newTotalCals += (item.calories * item.quantity).round();
+    }
+
+    final newResult = originalResult.copyWith(
+      detectedItems: _items,
+      totalCalories: newTotalCals,
+    );
+
+    ref.read(mealScanControllerProvider.notifier).updateResult(newResult);
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      height: MediaQuery.of(context).size.height * 0.7,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('Edit Portions', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+              const Spacer(),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, size: 20)),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _items.length,
+              itemBuilder: (context, index) {
+                final item = _items[index];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                          Text('${(item.calories * item.quantity).round()} kcal', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF027B3D))),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Text('Qty: ${item.quantity.toStringAsFixed(1)} ${item.unit}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                          Expanded(
+                            child: Slider(
+                              value: item.quantity,
+                              min: 0.1,
+                              max: 5.0,
+                              activeColor: const Color(0xFF027B3D),
+                              onChanged: (v) {
+                                setState(() {
+                                  _items[index] = item.copyWith(quantity: v);
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          ElevatedButton(
+            onPressed: _save,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF027B3D),
+              minimumSize: const Size.fromHeight(56),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            ),
+            child: const Text('Save Changes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom),
+        ],
       ),
     );
   }

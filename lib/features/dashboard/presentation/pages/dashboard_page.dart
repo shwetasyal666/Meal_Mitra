@@ -8,6 +8,7 @@ import 'package:mealmitra/features/dashboard/data/dashboard_repository.dart';
 import 'package:mealmitra/features/profile/data/profile_repository.dart';
 import 'package:mealmitra/features/meal_history/presentation/widgets/meal_details_sheet.dart';
 import 'package:mealmitra/features/meal_history/domain/meal_record.dart';
+import 'package:mealmitra/features/dashboard/presentation/widgets/recommendations_sheet.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -183,7 +184,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           final isToday = DateUtils.isSameDay(date, now);
 
           return GestureDetector(
-            onTap: () => ref.read(selectedDateProvider.notifier).state = date,
+            onTap: () => ref.read(selectedDateProvider.notifier).updateDate(date),
             child: Container(
               width: 54,
               margin: const EdgeInsets.only(right: 12),
@@ -538,7 +539,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           ),
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed: () {},
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (context) => const RecommendationsSheet(),
+              );
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF027B3D),
               minimumSize: const Size.fromHeight(56),

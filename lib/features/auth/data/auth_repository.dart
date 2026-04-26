@@ -2,15 +2,24 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:mealmitra/core/config/app_config.dart';
+import 'package:mealmitra/features/auth/data/firebase_auth_repository.dart';
 
 abstract class AuthRepository {
   Stream<String?> authStateChanges();
   Future<void> signInWithEmail(String email, String password);
   Future<void> registerWithEmail(String email, String password, {String? displayName});
   Future<void> signOut();
+  Future<void> sendPasswordResetEmail(String email);
+  Future<void> signInWithGoogle();
+  Future<bool> isEmailVerified();
+  Future<void> sendEmailVerification();
 }
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
+  if (AppConfig.useFirebase) {
+    return FirebaseAuthRepository();
+  }
   return LocalAuthRepository(
     ref.watch(apiClientProvider),
   );
@@ -80,5 +89,27 @@ class LocalAuthRepository implements AuthRepository {
     await prefs.remove('auth_token');
     await prefs.remove('auth_uid');
     _authStateController.add(null);
+  }
+
+  @override
+  Future<void> sendPasswordResetEmail(String email) async {
+    // Basic stub for backend implementation
+    throw UnimplementedError('Password reset not implemented for local backend');
+  }
+
+  @override
+  Future<void> signInWithGoogle() async {
+    throw UnimplementedError('Google Sign-In not implemented for local backend');
+  }
+
+  @override
+  Future<bool> isEmailVerified() async {
+    // Local backend doesn't support email verification currently, always return true to allow access
+    return true; 
+  }
+
+  @override
+  Future<void> sendEmailVerification() async {
+    // Stub
   }
 }

@@ -6,6 +6,7 @@ import 'package:mealmitra/features/auth/presentation/controllers/auth_controller
 import 'package:mealmitra/features/profile/data/profile_repository.dart';
 import 'package:mealmitra/features/profile/domain/daily_calorie_target_calculator.dart';
 import 'package:mealmitra/features/profile/domain/user_profile.dart';
+import 'package:mealmitra/core/utils/unit_converter.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -22,6 +23,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   ProfileGoal _goal = ProfileGoal.lose;
   ActivityLevel _activity = ActivityLevel.moderate;
   String _gender = 'Male';
+  bool _useMetricHeight = true;
+  bool _useMetricWeight = true;
+  String _cuisinePreference = 'Any';
+  String _healthFocus = 'General Wellness';
+  String? _profilePic;
   bool _initialized = false;
   bool _isLoading = false;
 
@@ -45,6 +51,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         _gender = profile.gender;
         _goal = profile.goal;
         _activity = profile.activityLevel;
+        _useMetricHeight = profile.useMetricHeight;
+        _useMetricWeight = profile.useMetricWeight;
+        _cuisinePreference = profile.cuisinePreference;
+        _healthFocus = profile.healthFocus;
+        _profilePic = profile.profilePictureUrl;
       });
     }
   }
@@ -57,6 +68,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _gender = profile.gender;
     _goal = profile.goal;
     _activity = profile.activityLevel;
+    _useMetricHeight = profile.useMetricHeight;
+    _useMetricWeight = profile.useMetricWeight;
+    _cuisinePreference = profile.cuisinePreference;
+    _healthFocus = profile.healthFocus;
+    _profilePic = profile.profilePictureUrl;
   }
 
   @override
@@ -92,7 +108,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         goal: _goal,
         activityLevel: _activity,
         dailyCalorieTarget: target,
-        healthConditions: [], // Simplified for now
+        healthConditions: [],
+        useMetricHeight: _useMetricHeight,
+        useMetricWeight: _useMetricWeight,
+        cuisinePreference: _cuisinePreference,
+        healthFocus: _healthFocus,
+        profilePictureUrl: _profilePic,
       );
 
       await ref.read(profileRepositoryProvider).saveProfile(profile);
@@ -167,9 +188,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   const SizedBox(height: 16),
                   _buildMetricItem(context, LucideIcons.user, 'Display Name', _name.text, isEditable: true, onTap: () => _showEditSheet('name')),
                   _buildMetricItem(context, LucideIcons.cake, 'Age', '${_age.text} Years', isEditable: true, onTap: () => _showEditSheet('age')),
-                  _buildMetricItem(context, LucideIcons.ruler, 'Height', '${_height.round()} cm', isEditable: true, onTap: () => _showEditSheet('height')),
-                  _buildMetricItem(context, LucideIcons.weight, 'Weight', '${_weight.round()} kg', isEditable: true, onTap: () => _showEditSheet('weight')),
+                  _buildMetricItem(context, LucideIcons.ruler, 'Height', UnitConverter.formatHeight(_height.round(), _useMetricHeight), isEditable: true, onTap: () => _showEditSheet('height')),
+                  _buildMetricItem(context, LucideIcons.weight, 'Weight', UnitConverter.formatWeight(_weight.round(), _useMetricWeight), isEditable: true, onTap: () => _showEditSheet('weight')),
                   _buildMetricItem(context, LucideIcons.users, 'Gender', _gender, isEditable: true, onTap: () => _showEditSheet('gender')),
+                  _buildMetricItem(context, LucideIcons.ruler, 'Metric Height', _useMetricHeight ? 'Yes' : 'No', isEditable: true, onTap: () => setState(() => _useMetricHeight = !_useMetricHeight)),
+                  _buildMetricItem(context, LucideIcons.weight, 'Metric Weight', _useMetricWeight ? 'Yes' : 'No', isEditable: true, onTap: () => setState(() => _useMetricWeight = !_useMetricWeight)),
 
                   const SizedBox(height: 32),
                   _buildSectionTitle('THE LIFESTYLE'),
@@ -184,8 +207,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   const SizedBox(height: 32),
                   _buildSectionTitle('REGIONAL PREFERENCES'),
                   const SizedBox(height: 16),
-                  _buildPreferenceItem(context, 'Cuisine Type', 'North Indian', LucideIcons.mapPin),
-                  _buildPreferenceItem(context, 'Health Focus', 'Fat Loss', LucideIcons.heartPulse),
+                  _buildPreferenceItem(context, 'Cuisine Type', _cuisinePreference, LucideIcons.mapPin, onTap: () => _showEditSheet('cuisine')),
+                  _buildPreferenceItem(context, 'Health Focus', _healthFocus, LucideIcons.heartPulse, onTap: () => _showEditSheet('focus')),
 
                   const SizedBox(height: 40),
                   ElevatedButton(
@@ -225,9 +248,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           ),
         ),
         const Spacer(),
-        const CircleAvatar(
-          radius: 18,
-          backgroundImage: NetworkImage('https://api.dicebear.com/7.x/avataaars/png?seed=Felix'),
+        GestureDetector(
+          onTap: () async {
+            // Placeholder for image picker upload logic
+            // E.g., await pickImage(), uploadToCloudinary(), set _profilePic
+          },
+          child: CircleAvatar(
+            radius: 18,
+            backgroundImage: NetworkImage(_profilePic ?? 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix'),
+          ),
         ),
       ],
     );
@@ -409,9 +438,51 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                             ))
                         .toList(),
                   ),
+                )
+              else if (field == 'cuisine')
+                RadioGroup<String>(
+                  groupValue: _cuisinePreference,
+                  onChanged: (v) {
+                    if (v != null) {
+                      setState(() => _cuisinePreference = v);
+                      Navigator.pop(context);
+                    }
+                  },
+                  child: Column(
+                    children: ['Any', 'North Indian', 'South Indian', 'Continental', 'Vegan', 'Keto']
+                        .map((c) => RadioListTile<String>(
+                              title: Text(c,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w800)),
+                              value: c,
+                              activeColor: const Color(0xFF027B3D),
+                            ))
+                        .toList(),
+                  ),
+                )
+              else if (field == 'focus')
+                RadioGroup<String>(
+                  groupValue: _healthFocus,
+                  onChanged: (v) {
+                    if (v != null) {
+                      setState(() => _healthFocus = v);
+                      Navigator.pop(context);
+                    }
+                  },
+                  child: Column(
+                    children: ['General Wellness', 'Fat Loss', 'Muscle Gain', 'Diabetic Friendly', 'Heart Health']
+                        .map((f) => RadioListTile<String>(
+                              title: Text(f,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w800)),
+                              value: f,
+                              activeColor: const Color(0xFF027B3D),
+                            ))
+                        .toList(),
+                  ),
                 ),
               const SizedBox(height: 32),
-              if (field != 'activity')
+              if (field != 'activity' && field != 'gender' && field != 'cuisine' && field != 'focus')
                 ElevatedButton(
                   onPressed: () {
                     setState(() {
@@ -440,8 +511,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     return Row(
       children: [
         Expanded(child: _buildGoalCard('Lose Weight', _goal == ProfileGoal.lose, () => setState(() => _goal = ProfileGoal.lose))),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         Expanded(child: _buildGoalCard('Keep Fit', _goal == ProfileGoal.maintain, () => setState(() => _goal = ProfileGoal.maintain))),
+        const SizedBox(width: 8),
+        Expanded(child: _buildGoalCard('Gain Mass', _goal == ProfileGoal.gain, () => setState(() => _goal = ProfileGoal.gain))),
       ],
     );
   }
@@ -467,29 +540,32 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
   }
 
-  Widget _buildPreferenceItem(BuildContext context, String label, String value, IconData icon) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.03)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: const Color(0xFF027B3D)),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: const TextStyle(color: Colors.black38, fontSize: 10, fontWeight: FontWeight.w800)),
-              Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-            ],
-          ),
-          const Spacer(),
-          const Icon(LucideIcons.chevronRight, size: 16, color: Colors.black26),
-        ],
+  Widget _buildPreferenceItem(BuildContext context, String label, String value, IconData icon, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.black.withValues(alpha: 0.03)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: const Color(0xFF027B3D)),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(color: Colors.black38, fontSize: 10, fontWeight: FontWeight.w800)),
+                Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              ],
+            ),
+            const Spacer(),
+            const Icon(LucideIcons.chevronRight, size: 16, color: Colors.black26),
+          ],
+        ),
       ),
     );
   }

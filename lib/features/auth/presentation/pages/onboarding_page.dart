@@ -5,6 +5,7 @@ import 'package:mealmitra/features/auth/presentation/controllers/auth_controller
 import 'package:mealmitra/features/profile/data/profile_repository.dart';
 import 'package:mealmitra/features/profile/domain/daily_calorie_target_calculator.dart';
 import 'package:mealmitra/features/profile/domain/user_profile.dart';
+import 'package:mealmitra/core/utils/unit_converter.dart';
 
 class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});
@@ -24,6 +25,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
   String _gender = 'Male';
   double _height = 170;
   double _weight = 70;
+  bool _useMetric = true;
 
   // Step 2 — Goals
   ProfileGoal _goal = ProfileGoal.maintain;
@@ -140,6 +142,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
         activityLevel: _activity,
         dailyCalorieTarget: target,
         healthConditions: conditions,
+        useMetricHeight: _useMetric,
+        useMetricWeight: _useMetric,
       );
 
       await ref.read(profileRepositoryProvider).saveProfile(profile);
@@ -300,7 +304,32 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
                 fontSize: 15,
               ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 16),
+            
+            // Unit Toggle
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('US', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black54)),
+                  const SizedBox(width: 8),
+                  Switch(
+                    value: _useMetric,
+                    onChanged: (v) => setState(() => _useMetric = v),
+                    activeThumbColor: const Color(0xFF027B3D),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text('Metric', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black54)),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 16),
 
             // Gender Selection
             _buildGlassCard(
@@ -377,20 +406,11 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
                     textBaseline: TextBaseline.alphabetic,
                     children: [
                       Text(
-                        _height.round().toString(),
+                        UnitConverter.formatHeight(_height.round(), _useMetric),
                         style: const TextStyle(
                           color: Colors.black,
-                          fontSize: 40,
+                          fontSize: 32,
                           fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'cm',
-                        style: TextStyle(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
@@ -450,20 +470,11 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
                     textBaseline: TextBaseline.alphabetic,
                     children: [
                       Text(
-                        _weight.round().toString(),
+                        UnitConverter.formatWeight(_weight.round(), _useMetric),
                         style: const TextStyle(
                           color: Colors.black,
-                          fontSize: 40,
+                          fontSize: 36,
                           fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'kg',
-                        style: TextStyle(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],

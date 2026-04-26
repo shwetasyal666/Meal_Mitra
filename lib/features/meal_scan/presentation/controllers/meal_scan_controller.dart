@@ -8,11 +8,19 @@ import 'package:mealmitra/core/services/api/api_client.dart';
 import 'package:mealmitra/features/meal_scan/data/meal_scan_repository.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 
+import 'package:mealmitra/core/config/app_config.dart';
+import 'package:mealmitra/features/meal_scan/data/firebase_meal_repository.dart';
+
 final cameraCaptureServiceProvider = Provider((ref) => CameraCaptureService(ImagePicker()));
 
-final mealScanRepositoryProvider = Provider((ref) => MealScanRepository(
-  ref.watch(apiClientProvider),
-));
+final mealScanRepositoryProvider = Provider<MealScanRepository>((ref) {
+  if (AppConfig.useFirebase) {
+    return FirebaseMealRepository();
+  }
+  return LocalMealScanRepository(
+    ref.watch(apiClientProvider),
+  );
+});
 
 final mealScanControllerProvider = ChangeNotifierProvider((ref) => MealScanController(ref.watch(mealScanRepositoryProvider)));
 
@@ -74,6 +82,16 @@ class MealScanController extends ChangeNotifier {
       );
       notifyListeners();
     }
+  }
+
+  void updateResult(MealAnalysis newResult) {
+    state = MealScanState(
+      status: state.status,
+      result: newResult,
+      errorMessage: state.errorMessage,
+      imageFile: state.imageFile,
+    );
+    notifyListeners();
   }
 
   void reset() {

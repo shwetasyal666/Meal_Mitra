@@ -20,6 +20,18 @@ dependencies:
   lucide_icons_flutter: ^1.1.0
   flutter_svg: ^2.0.10
 
+  # Firebase
+  firebase_core: ^3.12.1
+  firebase_auth: ^5.5.1
+  cloud_firestore: ^5.6.7
+  firebase_messaging: ^15.2.5
+
+  # Google Sign-In
+  google_sign_in: ^6.2.2
+
+  # Client-side AI (for Firebase mode)
+  google_generative_ai: ^0.4.6
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

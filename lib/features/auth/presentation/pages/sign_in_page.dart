@@ -125,6 +125,29 @@ class _SignInPageState extends ConsumerState<SignInPage>
     }
   }
 
+  Future<void> _handleGoogleSignIn() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      await ref.read(authRepositoryProvider).signInWithGoogle();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -332,7 +355,23 @@ class _SignInPageState extends ConsumerState<SignInPage>
                                   ),
                                 ],
 
-                                const SizedBox(height: 26),
+                                // Forgot Password link
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: () => context.go('/forgot-password'),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: const Text('Forgot Password?', 
+                                      style: TextStyle(color: Color(0xFF027B3D), fontWeight: FontWeight.bold, fontSize: 13)
+                                    ),
+                                  ),
+                                ),
+
+                                const SizedBox(height: 16),
 
                                 // Sign In button
                                 _buildStaggeredField(
@@ -341,6 +380,44 @@ class _SignInPageState extends ConsumerState<SignInPage>
                                     label: 'Sign In',
                                     onPressed: _isLoading ? null : _submit,
                                     isLoading: _isLoading,
+                                  ),
+                                ),
+                                
+                                const SizedBox(height: 24),
+                                
+                                // Divider
+                                Row(
+                                  children: [
+                                    Expanded(child: Divider(color: Colors.black.withValues(alpha: 0.1))),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Text('OR', style: TextStyle(color: Colors.black38, fontSize: 12, fontWeight: FontWeight.w800)),
+                                    ),
+                                    Expanded(child: Divider(color: Colors.black.withValues(alpha: 0.1))),
+                                  ],
+                                ),
+                                
+                                const SizedBox(height: 24),
+                                
+                                // Google Sign In
+                                _buildStaggeredField(
+                                  delay: 3,
+                                  child: OutlinedButton(
+                                    onPressed: _isLoading ? null : _handleGoogleSignIn,
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      side: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        // Simple Google G logo using Text for now (could use SvgPicture if available)
+                                        const Text('G', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black87)),
+                                        const SizedBox(width: 12),
+                                        const Text('Continue with Google', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87)),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],

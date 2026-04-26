@@ -13,6 +13,11 @@ class UserProfile {
     required this.activityLevel,
     required this.dailyCalorieTarget,
     this.healthConditions = const [],
+    this.profilePictureUrl,
+    this.useMetricHeight = true,
+    this.useMetricWeight = true,
+    this.cuisinePreference = '',
+    this.healthFocus = '',
   });
 
   final String uid;
@@ -25,6 +30,11 @@ class UserProfile {
   final ActivityLevel activityLevel;
   final int dailyCalorieTarget;
   final List<String> healthConditions;
+  final String? profilePictureUrl;
+  final bool useMetricHeight;
+  final bool useMetricWeight;
+  final String cuisinePreference;
+  final String healthFocus;
 
   Map<String, dynamic> toMap() => {
         'displayName': displayName,
@@ -36,6 +46,11 @@ class UserProfile {
         'activityLevel': activityLevel.name,
         'dailyCalorieTarget': dailyCalorieTarget,
         'healthConditions': healthConditions.join(','),
+        'profilePictureUrl': profilePictureUrl,
+        'useMetricHeight': useMetricHeight,
+        'useMetricWeight': useMetricWeight,
+        'cuisinePreference': cuisinePreference,
+        'healthFocus': healthFocus,
       };
 
   static UserProfile fromMap(String uid, Map<String, dynamic> map) {
@@ -50,6 +65,11 @@ class UserProfile {
       activityLevel: _parseActivity(map['activityLevel']),
       dailyCalorieTarget: (map['dailyCalorieTarget'] as num?)?.toInt() ?? 0,
       healthConditions: _parseHealthConditions(map['healthConditions']),
+      profilePictureUrl: map['profilePictureUrl'] as String?,
+      useMetricHeight: map['useMetricHeight'] as bool? ?? true,
+      useMetricWeight: map['useMetricWeight'] as bool? ?? true,
+      cuisinePreference: map['cuisinePreference'] as String? ?? 'Any',
+      healthFocus: map['healthFocus'] as String? ?? 'General Wellness',
     );
   }
 
@@ -85,6 +105,11 @@ class UserProfile {
     ActivityLevel? activityLevel,
     int? dailyCalorieTarget,
     List<String>? healthConditions,
+    String? profilePictureUrl,
+    bool? useMetricHeight,
+    bool? useMetricWeight,
+    String? cuisinePreference,
+    String? healthFocus,
   }) {
     return UserProfile(
       uid: uid ?? this.uid,
@@ -97,6 +122,11 @@ class UserProfile {
       activityLevel: activityLevel ?? this.activityLevel,
       dailyCalorieTarget: dailyCalorieTarget ?? this.dailyCalorieTarget,
       healthConditions: healthConditions ?? this.healthConditions,
+      profilePictureUrl: profilePictureUrl ?? this.profilePictureUrl,
+      useMetricHeight: useMetricHeight ?? this.useMetricHeight,
+      useMetricWeight: useMetricWeight ?? this.useMetricWeight,
+      cuisinePreference: cuisinePreference ?? this.cuisinePreference,
+      healthFocus: healthFocus ?? this.healthFocus,
     );
   }
 }

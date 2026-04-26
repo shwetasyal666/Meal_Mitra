@@ -2,18 +2,20 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mealmitra/app/router/app_router.dart';
 
 /// A premium, interactive intro onboarding shown to first-time users.
 /// Covers app features with rich animations before leading to sign-up/sign-in.
-class IntroOnboardingPage extends StatefulWidget {
+class IntroOnboardingPage extends ConsumerStatefulWidget {
   const IntroOnboardingPage({super.key});
 
   @override
-  State<IntroOnboardingPage> createState() => _IntroOnboardingPageState();
+  ConsumerState<IntroOnboardingPage> createState() => _IntroOnboardingPageState();
 }
 
-class _IntroOnboardingPageState extends State<IntroOnboardingPage>
+class _IntroOnboardingPageState extends ConsumerState<IntroOnboardingPage>
     with TickerProviderStateMixin {
   final _pageController = PageController();
   int _currentPage = 0;
@@ -87,9 +89,11 @@ class _IntroOnboardingPageState extends State<IntroOnboardingPage>
   Future<void> _completeOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('hasSeenIntro', true);
-    if (mounted) {
-      context.go('/sign-in');
-    }
+    if (!mounted) return;
+    
+    // Invalidate the provider so the router picks up the new value
+    ref.invalidate(hasSeenIntroProvider);
+    context.go('/sign-in');
   }
 
   void _nextPage() {

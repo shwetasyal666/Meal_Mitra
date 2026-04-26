@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
 import 'package:mealmitra/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:mealmitra/features/profile/domain/user_profile.dart';
+import 'package:mealmitra/core/config/app_config.dart';
+import 'package:mealmitra/features/profile/data/firebase_profile_repository.dart';
 
 abstract class ProfileRepository {
   Future<UserProfile?> fetchCurrentProfile();
@@ -10,9 +12,13 @@ abstract class ProfileRepository {
 }
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
+  final uid = ref.watch(authStateProvider).value;
+  if (AppConfig.useFirebase) {
+    return FirebaseProfileRepository(uid);
+  }
   return LocalProfileRepository(
     ref.watch(apiClientProvider),
-    ref.watch(authStateProvider).value,
+    uid,
   );
 });
 

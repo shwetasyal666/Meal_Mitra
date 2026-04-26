@@ -5,6 +5,8 @@ class DetectedFoodItem {
     this.protein = 0,
     this.carbs = 0,
     this.fat = 0,
+    this.quantity = 1.0,
+    this.unit = 'serving',
   });
 
   final String name;
@@ -12,6 +14,8 @@ class DetectedFoodItem {
   final int protein;
   final int carbs;
   final int fat;
+  final double quantity;
+  final String unit;
 
   factory DetectedFoodItem.fromMap(Map<String, dynamic> map) {
     return DetectedFoodItem(
@@ -20,6 +24,40 @@ class DetectedFoodItem {
       protein: (map['protein'] as num?)?.toInt() ?? 0,
       carbs: (map['carbs'] as num?)?.toInt() ?? 0,
       fat: (map['fat'] as num?)?.toInt() ?? 0,
+      quantity: (map['quantity'] as num?)?.toDouble() ?? 1.0,
+      unit: (map['unit'] as String?) ?? 'serving',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'calories': calories,
+      'protein': protein,
+      'carbs': carbs,
+      'fat': fat,
+      'quantity': quantity,
+      'unit': unit,
+    };
+  }
+
+  DetectedFoodItem copyWith({
+    String? name,
+    int? calories,
+    int? protein,
+    int? carbs,
+    int? fat,
+    double? quantity,
+    String? unit,
+  }) {
+    return DetectedFoodItem(
+      name: name ?? this.name,
+      calories: calories ?? this.calories,
+      protein: protein ?? this.protein,
+      carbs: carbs ?? this.carbs,
+      fat: fat ?? this.fat,
+      quantity: quantity ?? this.quantity,
+      unit: unit ?? this.unit,
     );
   }
 }
@@ -56,6 +94,35 @@ class MealAnalysis {
               .toList() ??
           [],
       imageUrl: map['imageUrl'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': mealId,
+      'totalCalories': totalCalories,
+      'healthLabel': healthLabel,
+      'suggestions': suggestions,
+      'detectedItems': detectedItems.map((e) => e.toMap()).toList(),
+      'imageUrl': imageUrl,
+    };
+  }
+
+  MealAnalysis copyWith({
+    String? mealId,
+    int? totalCalories,
+    String? healthLabel,
+    List<String>? suggestions,
+    List<DetectedFoodItem>? detectedItems,
+    String? imageUrl,
+  }) {
+    return MealAnalysis(
+      mealId: mealId ?? this.mealId,
+      totalCalories: totalCalories ?? this.totalCalories,
+      healthLabel: healthLabel ?? this.healthLabel,
+      suggestions: suggestions ?? this.suggestions,
+      detectedItems: detectedItems ?? this.detectedItems,
+      imageUrl: imageUrl ?? this.imageUrl,
     );
   }
 }
