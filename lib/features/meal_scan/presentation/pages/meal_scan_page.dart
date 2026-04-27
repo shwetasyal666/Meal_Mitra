@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -79,7 +79,7 @@ class _MealScanPageState extends ConsumerState<MealScanPage>
     }
   }
 
-  Future<void> _startAnalysis(File file) async {
+  Future<void> _startAnalysis(XFile file) async {
     final uid = ref.read(authStateProvider).value;
     if (uid == null) return;
 

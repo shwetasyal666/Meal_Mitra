@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:mealmitra/app/router/app_router.dart';
 import 'package:mealmitra/features/auth/data/auth_repository.dart';
 
 class EmailVerificationPage extends ConsumerStatefulWidget {
@@ -40,9 +40,9 @@ class _EmailVerificationPageState extends ConsumerState<EmailVerificationPage> {
         setState(() => _isChecking = false);
         if (isVerified) {
           _timer?.cancel();
-          // Routing logic will naturally take over once verification changes
-          // but we can force a router refresh just in case
-          context.go('/onboarding');
+          // Invalidate the provider so the router picks up the verified status
+          // and automatically redirects to the correct next page.
+          ref.invalidate(emailVerifiedProvider);
         }
       }
     } catch (e) {

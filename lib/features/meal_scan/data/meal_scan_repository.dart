@@ -1,11 +1,11 @@
-import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 
 abstract class MealScanRepository {
   Future<MealAnalysis> analyzeMeal({
     required String uid,
-    required File imageFile,
+    required XFile imageFile,
     required String mealType,
   });
 
@@ -20,13 +20,14 @@ class LocalMealScanRepository implements MealScanRepository {
   @override
   Future<MealAnalysis> analyzeMeal({
     required String uid,
-    required File imageFile,
+    required XFile imageFile,
     required String mealType,
   }) async {
     final response = await _apiClient.postMultipart(
       '/meals/analyze',
       fileField: 'image',
-      filePath: imageFile.path,
+      fileBytes: await imageFile.readAsBytes(),
+      fileName: imageFile.name,
       fields: {
         'mealType': mealType,
       },

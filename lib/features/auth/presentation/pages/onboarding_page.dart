@@ -437,14 +437,14 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '100 cm',
+                        UnitConverter.formatHeight(100, _useMetric),
                         style: TextStyle(
                           color: Colors.black.withValues(alpha: 0.4),
                           fontSize: 12,
                         ),
                       ),
                       Text(
-                        '250 cm',
+                        UnitConverter.formatHeight(250, _useMetric),
                         style: TextStyle(
                           color: Colors.black.withValues(alpha: 0.4),
                           fontSize: 12,
@@ -501,14 +501,14 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '30 kg',
+                        UnitConverter.formatWeight(30, _useMetric),
                         style: TextStyle(
                           color: Colors.black.withValues(alpha: 0.4),
                           fontSize: 12,
                         ),
                       ),
                       Text(
-                        '200 kg',
+                        UnitConverter.formatWeight(200, _useMetric),
                         style: TextStyle(
                           color: Colors.black.withValues(alpha: 0.4),
                           fontSize: 12,

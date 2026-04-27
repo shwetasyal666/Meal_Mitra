@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,8 +13,10 @@ const bool kUseLocalBackend = false;
 const String kProductionBaseUrl = 'https://mealmitra-backend-pnov.onrender.com';
 
 /// Local dev server URL.
-String get _localBaseUrl =>
-    Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+String get _localBaseUrl {
+  if (kIsWeb) return 'http://localhost:3000';
+  return Platform.isAndroid ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+}
 
 final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient();
@@ -60,7 +63,7 @@ class ApiClient {
     return _handleResponse(response);
   }
 
-  Future<dynamic> postMultipart(String path, {required String fileField, required String filePath, Map<String, String>? fields}) async {
+  Future<dynamic> postMultipart(String path, {required String fileField, required List<int> fileBytes, required String fileName, Map<String, String>? fields}) async {
     final request = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'));
     if (authToken != null) {
       request.headers['Authorization'] = 'Bearer $authToken';
@@ -68,7 +71,7 @@ class ApiClient {
     if (fields != null) {
       request.fields.addAll(fields);
     }
-    request.files.add(await http.MultipartFile.fromPath(fileField, filePath));
+    request.files.add(http.MultipartFile.fromBytes(fileField, fileBytes, filename: fileName));
 
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);

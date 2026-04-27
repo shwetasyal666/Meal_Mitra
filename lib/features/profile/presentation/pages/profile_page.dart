@@ -385,7 +385,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               else if (field == 'height' || field == 'weight')
                 Column(
                   children: [
-                    Text('${tempSliderValue.round()} ${field == 'height' ? 'cm' : 'kg'}', 
+                    Text(
+                      field == 'height' 
+                          ? UnitConverter.formatHeight(tempSliderValue.round(), _useMetricHeight)
+                          : UnitConverter.formatWeight(tempSliderValue.round(), _useMetricWeight), 
                       style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF027B3D))
                     ),
                     Slider(

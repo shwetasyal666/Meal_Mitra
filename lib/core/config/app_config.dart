@@ -23,4 +23,10 @@ class AppConfig {
     'CLOUDINARY_UPLOAD_PRESET',
     defaultValue: 'mealmitra_unsigned',
   );
+
+  /// Google Sign-In Client ID for Web.
+  static const String googleWebClientId = String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+    defaultValue: '',
+  );
 }

@@ -19,14 +19,22 @@ class DashboardPage extends ConsumerStatefulWidget {
 
 class _DashboardPageState extends ConsumerState<DashboardPage>
     with TickerProviderStateMixin {
+  static const double _dateItemWidth = 54;
+  static const double _dateItemGap = 12;
+
   late AnimationController _fadeController;
   late AnimationController _slideController;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
+  ScrollController? _dateScrollController;
+
+  ScrollController get _resolvedDateScrollController =>
+      _dateScrollController ??= ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _resolvedDateScrollController;
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
@@ -37,23 +45,50 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, 0.12),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _slideController,
-      curve: Curves.easeOutCubic,
-    ));
+    _slideAnim = Tween<Offset>(begin: const Offset(0, 0.12), end: Offset.zero)
+        .animate(
+          CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
+        );
 
     _fadeController.forward();
     _slideController.forward();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _resetDashboardDateToToday();
+      _scrollDateStripToToday();
+    });
   }
 
   @override
   void dispose() {
+    _dateScrollController?.dispose();
     _fadeController.dispose();
     _slideController.dispose();
     super.dispose();
+  }
+
+  void _resetDashboardDateToToday() {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final selectedDate = ref.read(selectedDateProvider);
+
+    if (!DateUtils.isSameDay(selectedDate, today)) {
+      ref.read(selectedDateProvider.notifier).updateDate(today);
+    }
+  }
+
+  void _scrollDateStripToToday() {
+    final controller = _resolvedDateScrollController;
+
+    if (!controller.hasClients) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollDateStripToToday();
+      });
+      return;
+    }
+
+    final maxOffset = controller.position.maxScrollExtent;
+    controller.jumpTo(maxOffset);
   }
 
   @override
@@ -85,7 +120,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   child: SlideTransition(
                     position: _slideAnim,
                     child: ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
                       children: [
                         // Date Selector
                         _buildDateSelector(context, ref, selectedDate),
@@ -166,9 +204,16 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  Widget _buildDateSelector(BuildContext context, WidgetRef ref, DateTime selectedDate) {
+  Widget _buildDateSelector(
+    BuildContext context,
+    WidgetRef ref,
+    DateTime selectedDate,
+  ) {
     final now = DateTime.now();
-    final dates = List.generate(31, (index) => now.subtract(Duration(days: 30 - index)));
+    final dates = List.generate(
+      31,
+      (index) => now.subtract(Duration(days: 30 - index)),
+    );
 
     return SizedBox(
       height: 80,
@@ -176,31 +221,41 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         scrollDirection: Axis.horizontal,
         itemCount: dates.length,
         padding: EdgeInsets.zero,
-        // Start from today (end of list)
-        controller: ScrollController(initialScrollOffset: 1000), 
+        controller: _resolvedDateScrollController,
         itemBuilder: (context, index) {
           final date = dates[index];
           final isSelected = DateUtils.isSameDay(date, selectedDate);
           final isToday = DateUtils.isSameDay(date, now);
 
           return GestureDetector(
-            onTap: () => ref.read(selectedDateProvider.notifier).updateDate(date),
+            onTap: () {
+              ref.read(selectedDateProvider.notifier).updateDate(date);
+              if (isToday) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _scrollDateStripToToday();
+                });
+              }
+            },
             child: Container(
-              width: 54,
-              margin: const EdgeInsets.only(right: 12),
+              width: _dateItemWidth,
+              margin: const EdgeInsets.only(right: _dateItemGap),
               decoration: BoxDecoration(
                 color: isSelected ? const Color(0xFF027B3D) : Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isSelected ? Colors.transparent : Colors.black.withValues(alpha: 0.04),
+                  color: isSelected
+                      ? Colors.transparent
+                      : Colors.black.withValues(alpha: 0.04),
                 ),
-                boxShadow: isSelected ? [
-                  BoxShadow(
-                    color: const Color(0xFF027B3D).withValues(alpha: 0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  )
-                ] : null,
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFF027B3D).withValues(alpha: 0.2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -228,11 +283,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                       width: 4,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: isSelected ? Colors.white : const Color(0xFF027B3D),
+                        color: isSelected
+                            ? Colors.white
+                            : const Color(0xFF027B3D),
                         shape: BoxShape.circle,
                       ),
                     ),
-                  ]
+                  ],
                 ],
               ),
             ),
@@ -265,7 +322,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  Widget _buildCalorieCard(AsyncValue<dynamic> profile, AsyncValue<dynamic> summary) {
+  Widget _buildCalorieCard(
+    AsyncValue<dynamic> profile,
+    AsyncValue<dynamic> summary,
+  ) {
     return profile.when(
       data: (value) {
         final target = value?.dailyCalorieTarget ?? 2000;
@@ -363,22 +423,22 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildMacroBar(
-                  'PROTEIN', 
-                  summary.value?.totalProtein ?? 0, 
-                  ((target * 0.3) / 4).round(), 
-                  const Color(0xFF027B3D)
+                  'PROTEIN',
+                  summary.value?.totalProtein ?? 0,
+                  ((target * 0.3) / 4).round(),
+                  const Color(0xFF027B3D),
                 ),
                 _buildMacroBar(
-                  'CARBS', 
-                  summary.value?.totalCarbs ?? 0, 
-                  ((target * 0.4) / 4).round(), 
-                  const Color(0xFFEAB308)
+                  'CARBS',
+                  summary.value?.totalCarbs ?? 0,
+                  ((target * 0.4) / 4).round(),
+                  const Color(0xFFEAB308),
                 ),
                 _buildMacroBar(
-                  'FATS', 
-                  summary.value?.totalFats ?? 0, 
-                  ((target * 0.3) / 9).round(), 
-                  const Color(0xFFEF4444)
+                  'FATS',
+                  summary.value?.totalFats ?? 0,
+                  ((target * 0.3) / 9).round(),
+                  const Color(0xFFEF4444),
                 ),
               ],
             ),
@@ -425,8 +485,22 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         Text.rich(
           TextSpan(
             children: [
-              TextSpan(text: '${current}g', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.black)),
-              TextSpan(text: ' / ${target}g', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black26)),
+              TextSpan(
+                text: '${current}g',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black,
+                ),
+              ),
+              TextSpan(
+                text: ' / ${target}g',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black26,
+                ),
+              ),
             ],
           ),
         ),
@@ -439,7 +513,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
       height: 180,
       child: meals.when(
         data: (mealList) {
-          if (mealList.isEmpty) return const Center(child: Text('No scans today'));
+          if (mealList.isEmpty) {
+            return const Center(child: Text('No scans today'));
+          }
           return ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: mealList.length,
@@ -456,9 +532,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   Widget _buildScanCard(dynamic mealData) {
     final api = ref.watch(apiClientProvider);
     // Ensure we have a MealRecord object
-    final meal = mealData is MealRecord ? mealData : MealRecord.fromMap(mealData['id'] ?? '', mealData);
-    final imageUrl = meal.imageUrl.startsWith('http') ? meal.imageUrl : '${api.baseUrl}${meal.imageUrl}';
-    
+    final meal = mealData is MealRecord
+        ? mealData
+        : MealRecord.fromMap(mealData['id'] ?? '', mealData);
+    final imageUrl = meal.imageUrl.startsWith('http')
+        ? meal.imageUrl
+        : '${api.baseUrl}${meal.imageUrl}';
+
     return GestureDetector(
       onTap: () {
         showModalBottomSheet(
@@ -469,51 +549,85 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         );
       },
       child: Container(
-      width: 160,
-      margin: const EdgeInsets.only(right: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-              child: Stack(
-                fit: StackFit.expand,
+        width: 160,
+        margin: const EdgeInsets.only(right: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (c, e, s) =>
+                          Container(color: Colors.grey[100]),
+                    ),
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF027B3D),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'LOGGED',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => Container(color: Colors.grey[100])),
-                  Positioned(
-                    top: 12,
-                    left: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: const Color(0xFF027B3D), borderRadius: BorderRadius.circular(8)),
-                      child: const Text('LOGGED', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900)),
+                  Text(
+                    meal.mealType.toUpperCase(),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  Text(
+                    '${meal.totalCalories} kcal',
+                    style: const TextStyle(
+                      color: Colors.black38,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(meal.mealType.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
-                Text('${meal.totalCalories} kcal', style: const TextStyle(color: Colors.black38, fontSize: 11, fontWeight: FontWeight.w700)),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildVitalityScoreCard() {
     return Container(
@@ -529,13 +643,25 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             children: [
               Icon(LucideIcons.sparkles, color: Color(0xFF027B3D), size: 20),
               SizedBox(width: 12),
-              Text('Vitality Insight', style: TextStyle(color: Color(0xFF0D3B2E), fontWeight: FontWeight.w900, fontSize: 16)),
+              Text(
+                'Vitality Insight',
+                style: TextStyle(
+                  color: Color(0xFF0D3B2E),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           const Text(
             'You\'re doing great! Your fiber intake is up 20% today compared to your weekly average.',
-            style: TextStyle(color: Color(0xFF0D3B2E), fontSize: 13, fontWeight: FontWeight.w600, height: 1.5),
+            style: TextStyle(
+              color: Color(0xFF0D3B2E),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 20),
           ElevatedButton(
@@ -550,7 +676,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF027B3D),
               minimumSize: const Size.fromHeight(56),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
             ),
             child: const Text('Explore Recommendations'),
           ),

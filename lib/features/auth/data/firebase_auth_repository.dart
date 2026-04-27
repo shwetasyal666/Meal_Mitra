@@ -1,11 +1,17 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:mealmitra/core/config/app_config.dart';
 import 'package:mealmitra/features/auth/data/auth_repository.dart';
 
 class FirebaseAuthRepository implements AuthRepository {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: kIsWeb && AppConfig.googleWebClientId.isNotEmpty 
+        ? AppConfig.googleWebClientId 
+        : null,
+  );
 
   @override
   Stream<String?> authStateChanges() {
@@ -99,7 +105,7 @@ class FirebaseAuthRepository implements AuthRepository {
       case 'invalid-email':
         return 'Invalid email address.';
       default:
-        return 'Authentication failed. Please try again.';
+        return 'Authentication failed ($code). Please try again.';
     }
   }
 }

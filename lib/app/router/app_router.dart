@@ -25,6 +25,9 @@ final hasSeenIntroProvider = FutureProvider<bool>((ref) async {
 });
 
 final emailVerifiedProvider = FutureProvider<bool>((ref) async {
+  // Watch auth state so this re-evaluates when the user logs in or out
+  final authState = ref.watch(authStateProvider);
+  if (authState.value == null) return false;
   return ref.read(authRepositoryProvider).isEmailVerified();
 });
 

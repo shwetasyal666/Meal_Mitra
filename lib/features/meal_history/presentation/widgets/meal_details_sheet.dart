@@ -4,16 +4,29 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
 import 'package:mealmitra/features/meal_history/domain/meal_record.dart';
 
-class MealDetailsSheet extends ConsumerWidget {
+class MealDetailsSheet extends ConsumerStatefulWidget {
   const MealDetailsSheet({super.key, required this.meal});
 
   final MealRecord meal;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MealDetailsSheet> createState() => _MealDetailsSheetState();
+}
+
+class _MealDetailsSheetState extends ConsumerState<MealDetailsSheet> {
+  bool _showAllSuggestions = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final meal = widget.meal;
     final api = ref.watch(apiClientProvider);
-    final imageUrl = meal.imageUrl.startsWith('http') ? meal.imageUrl : '${api.baseUrl}${meal.imageUrl}';
+    final imageUrl = meal.imageUrl.startsWith('http')
+        ? meal.imageUrl
+        : '${api.baseUrl}${meal.imageUrl}';
     final theme = Theme.of(context);
+    final visibleSuggestions = _showAllSuggestions
+        ? meal.suggestions
+        : meal.suggestions.take(1).toList();
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -43,7 +56,10 @@ class MealDetailsSheet extends ConsumerWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF027B3D).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
@@ -82,7 +98,10 @@ class MealDetailsSheet extends ConsumerWidget {
                       width: 120,
                       height: 120,
                       color: Colors.grey[100],
-                      child: const Icon(LucideIcons.utensils, color: Colors.grey),
+                      child: const Icon(
+                        LucideIcons.utensils,
+                        color: Colors.grey,
+                      ),
                     ),
                   ),
                 ),
@@ -99,11 +118,23 @@ class MealDetailsSheet extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      _buildMacroTag(LucideIcons.beef, '${meal.protein}g Protein', const Color(0xFF027B3D)),
+                      _buildMacroTag(
+                        LucideIcons.beef,
+                        '${meal.protein}g Protein',
+                        const Color(0xFF027B3D),
+                      ),
                       const SizedBox(height: 4),
-                      _buildMacroTag(LucideIcons.wheat, '${meal.carbs}g Carbs', const Color(0xFFEAB308)),
+                      _buildMacroTag(
+                        LucideIcons.wheat,
+                        '${meal.carbs}g Carbs',
+                        const Color(0xFFEAB308),
+                      ),
                       const SizedBox(height: 4),
-                      _buildMacroTag(LucideIcons.droplets, '${meal.fat}g Fats', const Color(0xFFEF4444)),
+                      _buildMacroTag(
+                        LucideIcons.droplets,
+                        '${meal.fat}g Fats',
+                        const Color(0xFFEF4444),
+                      ),
                     ],
                   ),
                 ),
@@ -124,7 +155,11 @@ class MealDetailsSheet extends ConsumerWidget {
                   children: [
                     const Row(
                       children: [
-                        Icon(LucideIcons.sparkles, color: Color(0xFF027B3D), size: 18),
+                        Icon(
+                          LucideIcons.sparkles,
+                          color: Color(0xFF027B3D),
+                          size: 18,
+                        ),
                         SizedBox(width: 10),
                         Text(
                           'VITALITY SUGGESTION',
@@ -138,15 +173,59 @@ class MealDetailsSheet extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      meal.suggestions.first,
-                      style: const TextStyle(
-                        color: Color(0xFF0D3B2E),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.5,
+                    ...visibleSuggestions.map(
+                      (suggestion) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              margin: const EdgeInsets.only(top: 8),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF027B3D),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                suggestion,
+                                style: const TextStyle(
+                                  color: Color(0xFF0D3B2E),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
+                    if (meal.suggestions.length > 1)
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _showAllSuggestions = !_showAllSuggestions;
+                          });
+                        },
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          _showAllSuggestions
+                              ? 'Show less'
+                              : 'More (${meal.suggestions.length - 1})',
+                          style: const TextStyle(
+                            color: Color(0xFF027B3D),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

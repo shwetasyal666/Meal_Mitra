@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +7,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
 import 'package:mealmitra/features/meal_scan/presentation/controllers/meal_scan_controller.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
+import 'package:mealmitra/features/dashboard/data/dashboard_repository.dart';
 
 class MealAnalysisPage extends ConsumerWidget {
   const MealAnalysisPage({super.key});
@@ -41,7 +44,9 @@ class MealAnalysisPage extends ConsumerWidget {
                 fit: StackFit.expand,
                 children: [
                   if (scanState.imageFile != null)
-                    Image.file(scanState.imageFile!, fit: BoxFit.cover)
+                    kIsWeb 
+                        ? Image.network(scanState.imageFile!.path, fit: BoxFit.cover)
+                        : Image.file(File(scanState.imageFile!.path), fit: BoxFit.cover)
                   else if (result.imageUrl != null)
                     Image.network(
                       result.imageUrl!.startsWith('http') 
@@ -268,6 +273,8 @@ class MealAnalysisPage extends ConsumerWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
         ),
         onPressed: () {
+          ref.invalidate(dailySummaryProvider);
+          ref.invalidate(recentMealsProvider);
           ref.read(mealScanControllerProvider.notifier).reset();
           context.go('/dashboard');
         },
