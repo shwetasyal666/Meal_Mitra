@@ -4,17 +4,21 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: android-release-main
+  group: android-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-and-release:
+    name: Build Android Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -38,8 +42,20 @@ jobs:
       - name: 📦 Install dependencies
         run: flutter pub get
 
+      - name: 🔑 Inject environment variables
+        run: |
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          echo "CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}" >> .env
+          echo "CLOUDINARY_UPLOAD_PRESET=${{ secrets.CLOUDINARY_UPLOAD_PRESET }}" >> .env
+
+      - name: 🔥 Restore Firebase config files
+        run: |
+          echo "${{ secrets.FIREBASE_OPTIONS_DART }}" | base64 --decode --ignore-garbage > lib/firebase_options.dart
+          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 --decode --ignore-garbage > android/app/google-services.json
+
       - name: 📋 Prepare release metadata
         id: meta
+        # Only needed for releases on main, but safe to run on PRs too
         run: |
           set -euo pipefail
           APP_VERSION="$(grep '^version:' pubspec.yaml | sed 's/version: //' | sed 's/+.*//')"
@@ -51,7 +67,7 @@ jobs:
           echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: 🛠️ Build release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --dart-define-from-file=.env
 
       - name: 📦 Prepare release artifact
         run: |
@@ -68,7 +84,9 @@ jobs:
           path: release-artifacts/${{ steps.meta.outputs.apk_name }}
           if-no-files-found: error
 
+      # Only publish a GitHub Release on pushes to main, not on PRs
       - name: 🚀 Publish GitHub Release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag_name }}
