@@ -3,6 +3,16 @@
 
 MealMitra is a comprehensive Flutter-based health and fitness application designed to help users achieve their weight management and fitness goals through personalized nutrition tracking, workout planning, and habit formation.
 
+## Screenshots
+
+<div align="center">
+  <img src="assets/screenshots/screenshot1.png" width="18%" />
+  <img src="assets/screenshots/screenshot2.png" width="18%" />
+  <img src="assets/screenshots/screenshot3.png" width="18%" />
+  <img src="assets/screenshots/screenshot4.png" width="18%" />
+  <img src="assets/screenshots/screenshot5.png" width="18%" />
+</div>
+
 ## Features
 
 - **User Authentication**: Secure sign-up and login using Firebase Authentication.
