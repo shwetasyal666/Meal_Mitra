@@ -6,11 +6,14 @@ MealMitra is a comprehensive Flutter-based health and fitness application design
 ## Screenshots
 
 <div align="center">
-  <img src="assets/screenshots/screenshot1.png" width="18%" />
-  <img src="assets/screenshots/screenshot2.png" width="18%" />
-  <img src="assets/screenshots/screenshot3.png" width="18%" />
-  <img src="assets/screenshots/screenshot4.png" width="18%" />
-  <img src="assets/screenshots/screenshot5.png" width="18%" />
+  <img src="assets/screenshots/ScreenShot-1.png" width="18%" />
+  <img src="assets/screenshots/ScreenShot-2.png" width="18%" />
+  <img src="assets/screenshots/ScreenShot-3.png" width="18%" />
+  <img src="assets/screenshots/ScreenShot-4.png" width="18%" />
+  <img src="assets/screenshots/ScreenShot-5.png" width="18%" />
+  <img src="assets/screenshots/ScreenShot-6.png" width="18%" />
+  <img src="assets/screenshots/ScreenShot-7.png" width="18%" />
+  <img src="assets/screenshots/ScreenShot-8.png" width="18%" />
 </div>
 
 ## Features

@@ -67,7 +67,7 @@ jobs:
           echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: 🛠️ Build release APK
-        run: flutter build apk --release --dart-define-from-file=.env
+        run: flutter build apk --release --build-name=${{ steps.meta.outputs.app_version }} --build-number=${{ github.run_number }} --dart-define-from-file=.env
 
       - name: 📦 Prepare release artifact
         run: |
