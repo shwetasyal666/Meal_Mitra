@@ -132,7 +132,9 @@ class MealAnalysisPage extends ConsumerWidget {
                     ],
                   ),
                   Text(
-                    'Catalog estimate from selected portions',
+                    result.detectedItems.isEmpty
+                        ? 'Add visible foods manually if AI could not identify them'
+                        : 'AI estimate from the photo. Review before logging',
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -390,6 +392,7 @@ class MealAnalysisPage extends ConsumerWidget {
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF027B3D),
+          foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(60),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(32),
@@ -425,7 +428,11 @@ class MealAnalysisPage extends ConsumerWidget {
     );
   }
 
-  void _showEditSheet(BuildContext context, WidgetRef ref, dynamic result) {
+  void _showEditSheet(
+    BuildContext context,
+    WidgetRef ref,
+    MealAnalysis result,
+  ) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -465,8 +472,80 @@ class MealAnalysisPage extends ConsumerWidget {
   }
 }
 
+List<DetectedFoodItem> _mergeFoodItem(
+  List<DetectedFoodItem> currentItems,
+  DetectedFoodItem newItem,
+) {
+  final items = List<DetectedFoodItem>.from(currentItems);
+  final existingIndex = items.indexWhere((item) => item.name == newItem.name);
+
+  if (existingIndex >= 0) {
+    final current = items[existingIndex];
+    items[existingIndex] = current.copyWith(
+      quantity: (current.quantity + 1).clamp(0.1, 5.0).toDouble(),
+    );
+    return items;
+  }
+
+  items.add(newItem);
+  return items;
+}
+
+MealAnalysis _mealWithItems(
+  MealAnalysis analysis,
+  List<DetectedFoodItem> items,
+) {
+  final totals = _mealMacroTotals(items);
+
+  return analysis.copyWith(
+    detectedItems: items,
+    totalCalories: totals['totalCalories'],
+    healthLabel: _mealHealthLabel(totals['totalCalories'] ?? 0),
+    suggestions: _mealSuggestions(totals),
+  );
+}
+
+Map<String, int> _mealMacroTotals(List<DetectedFoodItem> items) {
+  var calories = 0;
+  var protein = 0;
+  var carbs = 0;
+  var fat = 0;
+
+  for (final item in items) {
+    calories += (item.calories * item.quantity).round();
+    protein += (item.protein * item.quantity).round();
+    carbs += (item.carbs * item.quantity).round();
+    fat += (item.fat * item.quantity).round();
+  }
+
+  return {
+    'totalCalories': calories,
+    'protein': protein,
+    'carbs': carbs,
+    'fat': fat,
+  };
+}
+
+String _mealHealthLabel(int calories) {
+  if (calories >= 800) return 'avoid';
+  if (calories <= 450) return 'healthy';
+  return 'moderate';
+}
+
+List<String> _mealSuggestions(Map<String, int> totals) {
+  final calories = totals['totalCalories'] ?? 0;
+  final protein = totals['protein'] ?? 0;
+  return [
+    'This estimate is based on the foods and portions you selected.',
+    if (protein < 15)
+      'Protein looks light. Add dal, paneer, eggs, curd, tofu, or lean meat if it matches the meal.',
+    if (calories >= 800)
+      'This is calorie-dense. Consider a smaller portion or lighter next meal.',
+  ];
+}
+
 class _EditItemsSheet extends ConsumerStatefulWidget {
-  final dynamic result;
+  final MealAnalysis result;
 
   const _EditItemsSheet({required this.result});
 
@@ -491,15 +570,7 @@ class _EditItemsSheetState extends ConsumerState<_EditItemsSheet> {
   }
 
   void _save() {
-    final originalResult = widget.result;
-    final totals = _macroTotals(_items);
-
-    final newResult = originalResult.copyWith(
-      detectedItems: _items,
-      totalCalories: totals['totalCalories'],
-      healthLabel: _healthLabel(totals['totalCalories'] ?? 0),
-      suggestions: _suggestions(totals),
-    );
+    final newResult = _mealWithItems(widget.result, _items);
 
     ref.read(mealScanControllerProvider.notifier).updateResult(newResult);
     Navigator.pop(context);
@@ -514,58 +585,11 @@ class _EditItemsSheetState extends ConsumerState<_EditItemsSheet> {
     );
 
     if (selected == null) return;
-    setState(() {
-      final existingIndex = _items.indexWhere(
-        (item) => item.name == selected.name,
-      );
-      if (existingIndex >= 0) {
-        final current = _items[existingIndex];
-        _items[existingIndex] = current.copyWith(
-          quantity: (current.quantity + 1).clamp(0.1, 5.0),
-        );
-      } else {
-        _items.add(selected);
-      }
-    });
+    _addItem(selected);
   }
 
-  Map<String, int> _macroTotals(List<DetectedFoodItem> items) {
-    var calories = 0;
-    var protein = 0;
-    var carbs = 0;
-    var fat = 0;
-
-    for (final item in items) {
-      calories += (item.calories * item.quantity).round();
-      protein += (item.protein * item.quantity).round();
-      carbs += (item.carbs * item.quantity).round();
-      fat += (item.fat * item.quantity).round();
-    }
-
-    return {
-      'totalCalories': calories,
-      'protein': protein,
-      'carbs': carbs,
-      'fat': fat,
-    };
-  }
-
-  String _healthLabel(int calories) {
-    if (calories >= 800) return 'avoid';
-    if (calories <= 450) return 'healthy';
-    return 'moderate';
-  }
-
-  List<String> _suggestions(Map<String, int> totals) {
-    final calories = totals['totalCalories'] ?? 0;
-    final protein = totals['protein'] ?? 0;
-    return [
-      'This estimate is based on the foods and portions you selected.',
-      if (protein < 15)
-        'Protein looks light. Add dal, paneer, eggs, curd, tofu, or lean meat if it matches the meal.',
-      if (calories >= 800)
-        'This is calorie-dense. Consider a smaller portion or lighter next meal.',
-    ];
+  void _addItem(DetectedFoodItem item) {
+    setState(() => _items = _mergeFoodItem(_items, item));
   }
 
   @override

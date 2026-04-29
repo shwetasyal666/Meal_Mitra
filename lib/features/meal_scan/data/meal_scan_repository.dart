@@ -1,5 +1,5 @@
 import 'package:image_picker/image_picker.dart';
-import 'package:mealmitra/core/services/api/api_client.dart';
+import 'package:mealmitra/features/meal_scan/data/ai_food_analysis_service.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 
 abstract class MealScanRepository {
@@ -15,7 +15,9 @@ abstract class MealScanRepository {
 }
 
 class LocalMealScanRepository implements MealScanRepository {
-  LocalMealScanRepository(ApiClient apiClient);
+  LocalMealScanRepository(this._foodAnalysisService);
+
+  final AiFoodAnalysisService _foodAnalysisService;
 
   @override
   Future<MealAnalysis> analyzeMeal({
@@ -24,17 +26,29 @@ class LocalMealScanRepository implements MealScanRepository {
     required String mealType,
   }) async {
     final mealId = DateTime.now().millisecondsSinceEpoch.toString();
-    return MealAnalysis(
-      mealId: mealId,
-      mealType: mealType,
-      capturedAtIso: DateTime.now().toIso8601String(),
-      totalCalories: 0,
-      healthLabel: 'moderate',
-      imageUrl: imageFile.path,
-      suggestions: const [
-        'Add the visible foods from the catalog to calculate this meal.',
-      ],
-    );
+    final capturedAtIso = DateTime.now().toIso8601String();
+
+    try {
+      return await _foodAnalysisService.analyzeMealImage(
+        mealId: mealId,
+        mealType: mealType,
+        capturedAtIso: capturedAtIso,
+        imageFile: imageFile,
+      );
+    } catch (error) {
+      return MealAnalysis(
+        mealId: mealId,
+        mealType: mealType,
+        capturedAtIso: capturedAtIso,
+        totalCalories: 0,
+        healthLabel: 'moderate',
+        imageUrl: imageFile.path,
+        suggestions: [
+          'AI analysis failed: $error',
+          'Try a clearer top-down photo or add foods manually.',
+        ],
+      );
+    }
   }
 
   @override

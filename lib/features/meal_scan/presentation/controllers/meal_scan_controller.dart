@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
-import 'package:mealmitra/core/services/api/api_client.dart';
 import 'package:mealmitra/core/services/cloudinary_upload_service.dart';
+import 'package:mealmitra/features/meal_scan/data/ai_food_analysis_service.dart';
 import 'package:mealmitra/features/meal_scan/data/meal_scan_repository.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 
@@ -13,9 +13,12 @@ import 'package:mealmitra/features/meal_scan/data/firebase_meal_repository.dart'
 
 final mealScanRepositoryProvider = Provider<MealScanRepository>((ref) {
   if (AppConfig.useFirebase) {
-    return FirebaseMealRepository(ref.watch(cloudinaryUploadServiceProvider));
+    return FirebaseMealRepository(
+      ref.watch(cloudinaryUploadServiceProvider),
+      ref.watch(aiFoodAnalysisServiceProvider),
+    );
   }
-  return LocalMealScanRepository(ref.watch(apiClientProvider));
+  return LocalMealScanRepository(ref.watch(aiFoodAnalysisServiceProvider));
 });
 
 final mealScanControllerProvider = ChangeNotifierProvider(

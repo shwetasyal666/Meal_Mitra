@@ -47,6 +47,9 @@ jobs:
           echo "GITHUB_REPO=${{ github.repository }}" >> .env
           echo "CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}" >> .env
           echo "CLOUDINARY_UPLOAD_PRESET=${{ secrets.CLOUDINARY_UPLOAD_PRESET }}" >> .env
+          echo "FOOD_AI_PROXY_URL=${{ secrets.FOOD_AI_PROXY_URL }}" >> .env
+          echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> .env
+          echo "FOOD_AI_MODEL=${{ vars.FOOD_AI_MODEL }}" >> .env
 
       - name: 🔥 Restore Firebase config files
         run: |

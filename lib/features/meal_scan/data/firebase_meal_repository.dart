@@ -2,15 +2,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mealmitra/core/services/cloudinary_upload_service.dart';
+import 'package:mealmitra/features/meal_scan/data/ai_food_analysis_service.dart';
 import 'package:mealmitra/features/meal_scan/data/meal_scan_repository.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 
 class FirebaseMealRepository implements MealScanRepository {
-  FirebaseMealRepository(this._cloudinaryUploadService);
+  FirebaseMealRepository(
+    this._cloudinaryUploadService,
+    this._foodAnalysisService,
+  );
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final CloudinaryUploadService _cloudinaryUploadService;
+  final AiFoodAnalysisService _foodAnalysisService;
 
   @override
   Future<MealAnalysis> analyzeMeal({
@@ -19,23 +24,35 @@ class FirebaseMealRepository implements MealScanRepository {
     required String mealType,
   }) async {
     final mealId = DateTime.now().millisecondsSinceEpoch.toString();
+    final capturedAtIso = DateTime.now().toIso8601String();
     final imageUrl = await _cloudinaryUploadService.uploadMealImage(
       uid: uid,
       mealId: mealId,
       imageFile: imageFile,
     );
 
-    return MealAnalysis(
-      mealId: mealId,
-      mealType: mealType,
-      capturedAtIso: DateTime.now().toIso8601String(),
-      totalCalories: 0,
-      healthLabel: 'moderate',
-      imageUrl: imageUrl,
-      suggestions: const [
-        'Add the visible foods from the catalog to calculate this meal.',
-      ],
-    );
+    try {
+      return await _foodAnalysisService.analyzeMealImage(
+        mealId: mealId,
+        mealType: mealType,
+        capturedAtIso: capturedAtIso,
+        imageFile: imageFile,
+        imageUrl: imageUrl,
+      );
+    } catch (error) {
+      return MealAnalysis(
+        mealId: mealId,
+        mealType: mealType,
+        capturedAtIso: capturedAtIso,
+        totalCalories: 0,
+        healthLabel: 'moderate',
+        imageUrl: imageUrl,
+        suggestions: [
+          'AI analysis failed: $error',
+          'Try a clearer top-down photo or add foods manually.',
+        ],
+      );
+    }
   }
 
   @override
@@ -91,7 +108,9 @@ class FirebaseMealRepository implements MealScanRepository {
       'detectedItems': analysis.detectedItems
           .map((item) => item.toMap())
           .toList(),
-      'analysisSource': 'manual_catalog',
+      'analysisSource': analysis.detectedItems.isEmpty
+          ? 'manual_catalog'
+          : 'ai_vision_reviewed',
     };
   }
 
