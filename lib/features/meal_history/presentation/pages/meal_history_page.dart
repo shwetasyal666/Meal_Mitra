@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
+import 'package:mealmitra/core/widgets/app_image.dart';
 import 'package:mealmitra/features/dashboard/data/dashboard_repository.dart';
 import 'package:mealmitra/features/meal_history/domain/meal_record.dart';
 import 'package:mealmitra/features/meal_history/presentation/widgets/meal_details_sheet.dart';
@@ -226,7 +227,7 @@ class MealHistoryPage extends ConsumerWidget {
   Widget _buildMealCard(WidgetRef ref, dynamic mealData, BuildContext context) {
     final api = ref.watch(apiClientProvider);
     final meal = mealData is MealRecord ? mealData : MealRecord.fromMap(mealData['id'] ?? '', mealData);
-    final imageUrl = meal.imageUrl.startsWith('http') ? meal.imageUrl : '${api.baseUrl}${meal.imageUrl}';
+    final imageUrl = _resolveImagePath(api.baseUrl, meal.imageUrl);
 
     return GestureDetector(
       onTap: () {
@@ -249,12 +250,12 @@ class MealHistoryPage extends ConsumerWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                imageUrl,
+              child: AppImage(
+                imagePath: imageUrl,
                 width: 60,
                 height: 60,
                 fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => Container(
+                fallback: Container(
                   width: 60,
                   height: 60,
                   color: Colors.grey[200],
@@ -282,5 +283,13 @@ class MealHistoryPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  String? _resolveImagePath(String baseUrl, String imageUrl) {
+    if (imageUrl.isEmpty) return null;
+    if (imageUrl.startsWith('http') || AppImage.isLocalPath(imageUrl)) {
+      return imageUrl;
+    }
+    return '$baseUrl$imageUrl';
   }
 }

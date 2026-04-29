@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
+import 'package:mealmitra/core/widgets/app_image.dart';
 import 'package:mealmitra/features/meal_history/domain/meal_record.dart';
 
 class MealDetailsSheet extends ConsumerStatefulWidget {
@@ -20,9 +21,7 @@ class _MealDetailsSheetState extends ConsumerState<MealDetailsSheet> {
   Widget build(BuildContext context) {
     final meal = widget.meal;
     final api = ref.watch(apiClientProvider);
-    final imageUrl = meal.imageUrl.startsWith('http')
-        ? meal.imageUrl
-        : '${api.baseUrl}${meal.imageUrl}';
+    final imageUrl = _resolveImagePath(api.baseUrl, meal.imageUrl);
     final theme = Theme.of(context);
     final visibleSuggestions = _showAllSuggestions
         ? meal.suggestions
@@ -89,12 +88,12 @@ class _MealDetailsSheetState extends ConsumerState<MealDetailsSheet> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(24),
-                  child: Image.network(
-                    imageUrl,
+                  child: AppImage(
+                    imagePath: imageUrl,
                     width: 120,
                     height: 120,
                     fit: BoxFit.cover,
-                    errorBuilder: (c, e, s) => Container(
+                    fallback: Container(
                       width: 120,
                       height: 120,
                       color: Colors.grey[100],
@@ -298,5 +297,13 @@ class _MealDetailsSheetState extends ConsumerState<MealDetailsSheet> {
         ],
       ),
     );
+  }
+
+  String? _resolveImagePath(String baseUrl, String imageUrl) {
+    if (imageUrl.isEmpty) return null;
+    if (imageUrl.startsWith('http') || AppImage.isLocalPath(imageUrl)) {
+      return imageUrl;
+    }
+    return '$baseUrl$imageUrl';
   }
 }

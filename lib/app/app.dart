@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mealmitra/app/router/app_router.dart';
 import 'package:mealmitra/app/theme/app_theme.dart';
 import 'package:mealmitra/app/theme/theme_provider.dart';
+import 'package:mealmitra/core/update/update_gate.dart';
 
 class MealMitraApp extends ConsumerWidget {
   const MealMitraApp({super.key});
@@ -19,6 +20,12 @@ class MealMitraApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       routerConfig: router,
+      builder: (context, child) {
+        if (child == null) {
+          return const SizedBox.shrink();
+        }
+        return AppUpdateGate(child: child);
+      },
     );
   }
 }

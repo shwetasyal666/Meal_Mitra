@@ -8,6 +8,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+configurations.all {
+    exclude(group = "com.google.firebase", module = "firebase-iid")
+}
+
 android {
     namespace = "com.app.ai_assistant.mealmitra"
     compileSdk = flutter.compileSdkVersion

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
+import 'package:mealmitra/core/widgets/app_image.dart';
 import 'package:mealmitra/features/meal_scan/presentation/controllers/meal_scan_controller.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 import 'package:mealmitra/features/dashboard/data/dashboard_repository.dart';
@@ -16,6 +17,10 @@ class MealAnalysisPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scanState = ref.watch(mealScanControllerProvider).state;
     final result = scanState.result;
+    final resolvedImagePath = _resolveImagePath(
+      ref.watch(apiClientProvider).baseUrl,
+      result?.imageUrl,
+    );
 
     if (result == null) {
       return const Scaffold(
@@ -47,13 +52,11 @@ class MealAnalysisPage extends ConsumerWidget {
                     kIsWeb 
                         ? Image.network(scanState.imageFile!.path, fit: BoxFit.cover)
                         : Image.file(File(scanState.imageFile!.path), fit: BoxFit.cover)
-                  else if (result.imageUrl != null)
-                    Image.network(
-                      result.imageUrl!.startsWith('http') 
-                        ? result.imageUrl! 
-                        : '${ref.watch(apiClientProvider).baseUrl}${result.imageUrl}',
+                  else if (resolvedImagePath != null)
+                    AppImage(
+                      imagePath: resolvedImagePath,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
+                      fallback: Container(
                         color: Colors.grey[200],
                         child: const Icon(LucideIcons.imageOff, size: 40, color: Colors.grey),
                       ),
@@ -306,6 +309,14 @@ class MealAnalysisPage extends ConsumerWidget {
         return _EditItemsSheet(result: result);
       },
     );
+  }
+
+  String? _resolveImagePath(String baseUrl, String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) return null;
+    if (imageUrl.startsWith('http') || AppImage.isLocalPath(imageUrl)) {
+      return imageUrl;
+    }
+    return '$baseUrl$imageUrl';
   }
 }
 

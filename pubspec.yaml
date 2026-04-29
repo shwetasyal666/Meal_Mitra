@@ -19,6 +19,12 @@ dependencies:
   fl_chart: ^0.71.0
   lucide_icons_flutter: ^1.1.0
   flutter_svg: ^2.0.10
+  package_info_plus: ^8.0.2
+  path_provider: ^2.1.5
+  permission_handler: ^11.3.1
+  google_mlkit_image_labeling: ^0.13.0
+  open_filex: ^4.6.0
+  url_launcher: ^6.3.1
 
   # Firebase
   firebase_core: ^3.12.1
@@ -28,9 +34,6 @@ dependencies:
 
   # Google Sign-In
   google_sign_in: ^6.2.2
-
-  # Client-side AI (for Firebase mode)
-  google_generative_ai: ^0.4.6
 
 dev_dependencies:
   flutter_test:
@@ -67,4 +70,3 @@ flutter_native_splash:
     color_dark: "#0D1B2A"
     icon_background_color_dark: "#0D1B2A"
     image_dark: "assets/images/app_logo.png"
-

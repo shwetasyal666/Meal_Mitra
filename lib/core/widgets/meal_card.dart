@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mealmitra/app/theme/app_theme.dart';
+import 'package:mealmitra/core/widgets/app_image.dart';
 
 class MealCard extends StatelessWidget {
   final String title;
@@ -40,11 +41,11 @@ class MealCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Image.network(
-                  imageUrl,
+                child: AppImage(
+                  imagePath: imageUrl,
                   fit: BoxFit.cover,
                   width: double.infinity,
-                  errorBuilder: (context, error, stackTrace) => Container(
+                  fallback: Container(
                     color: Colors.grey.shade200,
                     child: const Icon(Icons.fastfood, color: Colors.grey),
                   ),

@@ -18,26 +18,30 @@ class EvolutionPage extends ConsumerWidget {
     final evolutionAsync = ref.watch(evolutionDataProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAF9F6),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: profileAsync.when(
           data: (profile) {
             if (profile == null) {
-              return const Center(
-                child: Text(
-                  'Complete onboarding to unlock your evolution data.',
-                ),
+              return const _EvolutionEmptyState(
+                title: 'Finish onboarding first',
+                message:
+                    'Complete your profile to unlock meal analysis and evolution insights.',
               );
             }
 
             return evolutionAsync.when(
-              data: (evolution) => SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              data: (evolution) => RefreshIndicator(
+                color: const Color(0xFF027B3D),
+                onRefresh: () async {
+                  ref.invalidate(currentProfileProvider);
+                  ref.invalidate(evolutionDataProvider);
+                },
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
+                  ),
                   children: [
                     _buildTopBar(context),
                     const SizedBox(height: 32),
@@ -48,10 +52,10 @@ class EvolutionPage extends ConsumerWidget {
                         fontSize: 34,
                       ),
                     ),
-                    const Text(
+                    Text(
                       'Your journey over the last 35 days',
-                      style: TextStyle(
-                        color: Colors.black38,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -78,13 +82,28 @@ class EvolutionPage extends ConsumerWidget {
                   ],
                 ),
               ),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, s) =>
-                  Center(child: Text('Error loading evolution data: $e')),
+              loading: () => const _EvolutionLoadingState(
+                message: 'Building your evolution view...',
+              ),
+              error: (e, s) => _EvolutionAsyncFallback(
+                title: 'Unable to load evolution data',
+                message:
+                    'The tab was waiting on your analytics feed for too long. Pull to refresh or try again.',
+                errorDetails: e.toString(),
+                onRetry: () => ref.invalidate(evolutionDataProvider),
+              ),
             );
           },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, s) => Center(child: Text('Error loading profile: $e')),
+          loading: () => const _EvolutionLoadingState(
+            message: 'Loading your profile context...',
+          ),
+          error: (e, s) => _EvolutionAsyncFallback(
+            title: 'Unable to load your profile',
+            message:
+                'We need your saved metrics before we can calculate the evolution view.',
+            errorDetails: e.toString(),
+            onRetry: () => ref.invalidate(currentProfileProvider),
+          ),
         ),
       ),
     );
@@ -976,5 +995,148 @@ class EvolutionPage extends ConsumerWidget {
 
     return '${evolution.loggedMealCount} meals across ${evolution.loggedDaysCount} active day'
         '${evolution.loggedDaysCount == 1 ? '' : 's'} are informing this evaluation.';
+  }
+}
+
+class _EvolutionLoadingState extends StatelessWidget {
+  const _EvolutionLoadingState({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(color: Color(0xFF027B3D)),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: Theme.of(context).textTheme.bodyMedium,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EvolutionAsyncFallback extends StatelessWidget {
+  const _EvolutionAsyncFallback({
+    required this.title,
+    required this.message,
+    required this.onRetry,
+    this.errorDetails,
+  });
+
+  final String title;
+  final String message;
+  final String? errorDetails;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                LucideIcons.trendingUp,
+                size: 40,
+                color: Color(0xFF027B3D),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                style: theme.textTheme.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+              if (errorDetails != null && errorDetails!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  errorDetails!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: onRetry,
+                child: const Text('Try Again'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EvolutionEmptyState extends StatelessWidget {
+  const _EvolutionEmptyState({
+    required this.title,
+    required this.message,
+  });
+
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(LucideIcons.circleUser, size: 40, color: Color(0xFF027B3D)),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                style: theme.textTheme.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

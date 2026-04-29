@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
+import 'package:mealmitra/core/widgets/app_image.dart';
 import 'package:mealmitra/features/dashboard/data/dashboard_repository.dart';
 import 'package:mealmitra/features/profile/data/profile_repository.dart';
 import 'package:mealmitra/features/meal_history/presentation/widgets/meal_details_sheet.dart';
@@ -537,9 +538,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     final meal = mealData is MealRecord
         ? mealData
         : MealRecord.fromMap(mealData['id'] ?? '', mealData);
-    final imageUrl = meal.imageUrl.startsWith('http')
-        ? meal.imageUrl
-        : '${api.baseUrl}${meal.imageUrl}';
+    final imageUrl = _resolveImagePath(api.baseUrl, meal.imageUrl);
 
     return GestureDetector(
       onTap: () {
@@ -569,11 +568,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.network(
-                      imageUrl,
+                    AppImage(
+                      imagePath: imageUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (c, e, s) =>
-                          Container(color: Colors.grey[100]),
+                      fallback: Container(color: Colors.grey[100]),
                     ),
                     Positioned(
                       top: 12,
@@ -629,6 +627,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         ),
       ),
     );
+  }
+
+  String? _resolveImagePath(String baseUrl, String imageUrl) {
+    if (imageUrl.isEmpty) return null;
+    if (imageUrl.startsWith('http') || AppImage.isLocalPath(imageUrl)) {
+      return imageUrl;
+    }
+    return '$baseUrl$imageUrl';
   }
 
   Widget _buildVitalityScoreCard() {

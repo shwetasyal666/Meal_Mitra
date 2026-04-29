@@ -1,22 +1,25 @@
-import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http;
-import 'package:mealmitra/core/config/app_config.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
+import 'package:mealmitra/core/services/local_file_storage_service.dart';
 import 'package:mealmitra/features/meal_scan/data/meal_scan_repository.dart';
+import 'package:mealmitra/features/meal_scan/data/on_device_food_analysis_service.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 
 class FirebaseMealRepository implements MealScanRepository {
-  static const String _geminiModel = 'gemini-2.5-flash';
-
-  FirebaseMealRepository(this._apiClient);
+  FirebaseMealRepository(
+    this._apiClient,
+    this._analysisService,
+    this._localFileStorageService,
+  );
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final ApiClient _apiClient;
+  final OnDeviceFoodAnalysisService _analysisService;
+  final LocalFileStorageService _localFileStorageService;
 
   @override
   Future<MealAnalysis> analyzeMeal({
@@ -24,9 +27,17 @@ class FirebaseMealRepository implements MealScanRepository {
     required XFile imageFile,
     required String mealType,
   }) async {
+    final mealId = DateTime.now().millisecondsSinceEpoch.toString();
+    final imagePath = await _localFileStorageService.saveMealImage(
+      imageFile: imageFile,
+      mealId: mealId,
+    );
+
     final data = await _loadAnalysisData(
       imageFile: imageFile,
+      mealId: mealId,
       mealType: mealType,
+      imagePath: imagePath,
     );
     final aiResult = MealAnalysis.fromMap(data);
 
@@ -34,7 +45,7 @@ class FirebaseMealRepository implements MealScanRepository {
         .collection('users')
         .doc(uid)
         .collection('meals')
-        .doc(aiResult.mealId)
+        .doc(mealId)
         .set(data);
 
     return aiResult;
@@ -47,241 +58,116 @@ class FirebaseMealRepository implements MealScanRepository {
       throw Exception('No authenticated Firebase user found.');
     }
 
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('meals')
-        .doc(id)
-        .delete();
+    final docRef = _firestore.collection('users').doc(uid).collection('meals').doc(id);
+    final existingDoc = await docRef.get();
+    final imagePath = existingDoc.data()?['imageUrl'] as String?;
+
+    await docRef.delete();
+    await _localFileStorageService.deleteIfManaged(imagePath);
   }
 
   Future<Map<String, dynamic>> _loadAnalysisData({
     required XFile imageFile,
+    required String mealId,
     required String mealType,
+    required String imagePath,
   }) async {
     try {
-      final response = await _apiClient.postMultipart(
-        '/meals/analyze-public',
-        fileField: 'image',
-        fileBytes: await imageFile.readAsBytes(),
-        fileName: _safeFileName(imageFile),
-        fields: {'mealType': mealType},
+      final draft = await _analysisService.analyze(
+        imageFile: imageFile,
+        mealType: mealType,
       );
-
-      return _normalizeAnalysisResponse(response, mealType);
+      return _buildLocalAnalysisDocument(
+        mealId: mealId,
+        mealType: mealType,
+        imagePath: imagePath,
+        draft: draft,
+      );
     } catch (error) {
-      debugPrint('Backend analysis failed: $error');
+      debugPrint('On-device analysis failed: $error');
 
-      if (!_canUseDirectFallback) {
+      try {
+        final response = await _apiClient.postMultipart(
+          '/meals/analyze-public',
+          fileField: 'image',
+          fileBytes: await imageFile.readAsBytes(),
+          fileName: _safeFileName(imageFile),
+          fields: {'mealType': mealType},
+        );
+        return _normalizeBackendResponse(
+          response,
+          mealId: mealId,
+          mealType: mealType,
+          imagePath: imagePath,
+        );
+      } catch (backendError) {
         throw Exception(
-          'Meal analysis failed via backend and direct fallback is unavailable. '
-          'Backend error: $error',
+          'Meal analysis failed on-device and via backend fallback. '
+          'On-device error: $error. Backend error: $backendError',
         );
       }
-
-      return _analyzeDirectly(
-        imageFile: imageFile,
-        mealType: mealType,
-        backendError: error,
-      );
     }
   }
 
-  bool get _canUseDirectFallback =>
-      AppConfig.geminiApiKey.isNotEmpty &&
-      AppConfig.cloudinaryCloudName.isNotEmpty &&
-      AppConfig.cloudinaryUploadPreset.isNotEmpty;
-
-  Future<Map<String, dynamic>> _analyzeDirectly({
-    required XFile imageFile,
+  Map<String, dynamic> _buildLocalAnalysisDocument({
+    required String mealId,
     required String mealType,
-    required Object backendError,
-  }) async {
-    try {
-      final imageUrl = await _uploadToCloudinary(imageFile);
-      final geminiJson = await _generateGeminiAnalysis(
-        imageFile: imageFile,
-        mealType: mealType,
-      );
-
-      final detectedItems = List<dynamic>.from(
-        geminiJson['detectedItems'] ?? const <dynamic>[],
-      );
-      final mealId = DateTime.now().millisecondsSinceEpoch.toString();
-
-      return {
-        'id': mealId,
-        'mealId': mealId,
-        'mealType': mealType,
-        'imageUrl': imageUrl,
-        'capturedAt': DateTime.now().toIso8601String(),
-        'totalCalories': (geminiJson['totalCalories'] as num?)?.toInt() ?? 0,
-        'protein': _sumMacro(detectedItems, 'protein'),
-        'carbs': _sumMacro(detectedItems, 'carbs'),
-        'fat': _sumMacro(detectedItems, 'fat'),
-        'healthLabel': _normalizeHealthLabel(geminiJson['healthLabel']),
-        'suggestions': List<String>.from(geminiJson['suggestions'] ?? const []),
-        'detectedItems': detectedItems,
-      };
-    } catch (directError) {
-      throw Exception(
-        'Meal analysis failed. Backend error: $backendError. '
-        'Direct fallback error: $directError',
-      );
-    }
+    required String imagePath,
+    required MealAnalysisDraft draft,
+  }) {
+    return {
+      'id': mealId,
+      'mealId': mealId,
+      'mealType': mealType,
+      'imageUrl': imagePath,
+      'capturedAt': DateTime.now().toIso8601String(),
+      'totalCalories': draft.totalCalories,
+      'protein': draft.protein,
+      'carbs': draft.carbs,
+      'fat': draft.fat,
+      'healthLabel': draft.healthLabel,
+      'suggestions': draft.suggestions,
+      'detectedItems': draft.detectedItems.map((item) => item.toMap()).toList(),
+      'analysisSource': 'on_device_mlkit',
+    };
   }
 
-  Future<String> _uploadToCloudinary(XFile imageFile) async {
-    final request =
-        http.MultipartRequest(
-            'POST',
-            Uri.parse(
-              'https://api.cloudinary.com/v1_1/${AppConfig.cloudinaryCloudName}/image/upload',
-            ),
-          )
-          ..fields['upload_preset'] = AppConfig.cloudinaryUploadPreset
-          ..files.add(
-            http.MultipartFile.fromBytes(
-              'file',
-              await imageFile.readAsBytes(),
-              filename: _safeFileName(imageFile),
-            ),
-          );
-
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'Cloudinary upload failed (${response.statusCode}): ${response.body}',
-      );
-    }
-
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final secureUrl = decoded['secure_url']?.toString();
-    if (secureUrl == null || secureUrl.isEmpty) {
-      throw Exception('Cloudinary upload did not return a secure URL.');
-    }
-    return secureUrl;
-  }
-
-  Future<Map<String, dynamic>> _generateGeminiAnalysis({
-    required XFile imageFile,
+  Map<String, dynamic> _normalizeBackendResponse(
+    dynamic response, {
+    required String mealId,
     required String mealType,
-  }) async {
-    final bytes = await imageFile.readAsBytes();
-    final response = await http.post(
-      Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/'
-        '$_geminiModel:generateContent',
-      ),
-      headers: <String, String>{
-        'Content-Type': 'application/json',
-        'x-goog-api-key': AppConfig.geminiApiKey,
-      },
-      body: jsonEncode({
-        'generationConfig': {
-          'responseMimeType': 'application/json',
-          'temperature': 0.1,
-        },
-        'contents': [
-          {
-            'parts': [
-              {
-                'text':
-                    '''
-Analyze this meal for $mealType.
-Return ONLY valid JSON matching this schema:
-{
-  "totalCalories": number,
-  "healthLabel": "healthy" | "moderate" | "avoid",
-  "suggestions": ["string"],
-  "detectedItems": [
-    {
-      "name": "string",
-      "calories": number,
-      "protein": number,
-      "carbs": number,
-      "fat": number
-    }
-  ]
-}
-''',
-              },
-              {
-                'inline_data': {
-                  'mime_type': _mimeTypeForImage(imageFile),
-                  'data': base64Encode(bytes),
-                },
-              },
-            ],
-          },
-        ],
-      }),
-    );
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'Gemini API error ${response.statusCode}: ${response.body}',
-      );
-    }
-
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final candidates = decoded['candidates'] as List<dynamic>? ?? const [];
-    if (candidates.isEmpty) {
-      throw Exception('Gemini returned no candidates: ${response.body}');
-    }
-
-    final content =
-        (candidates.first as Map<String, dynamic>)['content']
-            as Map<String, dynamic>?;
-    final parts = content?['parts'] as List<dynamic>? ?? const [];
-
-    String? text;
-    for (final part in parts) {
-      if (part is Map<String, dynamic> && part['text'] != null) {
-        text = part['text'].toString();
-        break;
-      }
-    }
-
-    if (text == null || text.isEmpty) {
-      throw Exception('Gemini response did not include text content.');
-    }
-
-    final cleaned = text.replaceAll('```json', '').replaceAll('```', '').trim();
-    return Map<String, dynamic>.from(jsonDecode(cleaned) as Map);
-  }
-
-  Map<String, dynamic> _normalizeAnalysisResponse(
-    dynamic response,
-    String mealType,
-  ) {
+    required String imagePath,
+  }) {
     if (response is! Map<String, dynamic>) {
       throw Exception('Invalid analysis response from backend.');
     }
-
-    final mealId =
-        (response['id'] ?? DateTime.now().millisecondsSinceEpoch.toString())
-            .toString();
-    final capturedAt =
-        (response['capturedAt'] ?? DateTime.now().toIso8601String()).toString();
 
     return {
       'id': mealId,
       'mealId': mealId,
       'mealType': (response['mealType'] ?? mealType).toString(),
-      'imageUrl': (response['imageUrl'] ?? '').toString(),
-      'capturedAt': capturedAt,
+      'imageUrl': imagePath,
+      'capturedAt': (response['capturedAt'] ?? DateTime.now().toIso8601String())
+          .toString(),
       'totalCalories': (response['totalCalories'] as num?)?.toInt() ?? 0,
-      'protein': (response['protein'] as num?)?.toInt() ?? 0,
-      'carbs': (response['carbs'] as num?)?.toInt() ?? 0,
-      'fat': (response['fat'] as num?)?.toInt() ?? 0,
+      'protein': (response['protein'] as num?)?.toInt() ?? _sumMacro(
+            List<dynamic>.from(response['detectedItems'] ?? const []),
+            'protein',
+          ),
+      'carbs': (response['carbs'] as num?)?.toInt() ??
+          _sumMacro(
+            List<dynamic>.from(response['detectedItems'] ?? const []),
+            'carbs',
+          ),
+      'fat': (response['fat'] as num?)?.toInt() ??
+          _sumMacro(
+            List<dynamic>.from(response['detectedItems'] ?? const []),
+            'fat',
+          ),
       'healthLabel': _normalizeHealthLabel(response['healthLabel']),
       'suggestions': List<String>.from(response['suggestions'] ?? const []),
-      'detectedItems': List<dynamic>.from(
-        response['detectedItems'] ?? const [],
-      ),
+      'detectedItems': List<dynamic>.from(response['detectedItems'] ?? const []),
+      'analysisSource': 'backend_fallback',
     };
   }
 
@@ -314,15 +200,5 @@ Return ONLY valid JSON matching this schema:
     final path = imageFile.path;
     if (path.isEmpty) return 'meal.jpg';
     return path.split('/').last;
-  }
-
-  String _mimeTypeForImage(XFile imageFile) {
-    final path = imageFile.path.toLowerCase();
-    if (path.endsWith('.png')) return 'image/png';
-    if (path.endsWith('.webp')) return 'image/webp';
-    if (path.endsWith('.heic') || path.endsWith('.heif')) {
-      return 'image/heic';
-    }
-    return 'image/jpeg';
   }
 }

@@ -1,8 +1,17 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:mealmitra/app/theme/theme_provider.dart';
 import 'package:mealmitra/features/auth/data/auth_repository.dart';
 import 'package:mealmitra/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:mealmitra/core/services/camera/camera_capture_service.dart';
+import 'package:mealmitra/core/services/local_file_storage_service.dart';
+import 'package:mealmitra/core/widgets/app_image.dart';
 import 'package:mealmitra/features/profile/data/profile_repository.dart';
 import 'package:mealmitra/features/profile/domain/daily_calorie_target_calculator.dart';
 import 'package:mealmitra/features/profile/domain/user_profile.dart';
@@ -28,6 +37,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   String _cuisinePreference = 'Any';
   String _healthFocus = 'General Wellness';
   String? _profilePic;
+  final Set<String> _obsoleteProfileImages = <String>{};
   bool _initialized = false;
   bool _isLoading = false;
 
@@ -44,18 +54,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final profile = ref.read(currentProfileProvider).value;
     if (profile != null) {
       setState(() {
-        _name.text = profile.displayName;
-        _age.text = profile.age.toString();
-        _height = profile.heightCm;
-        _weight = profile.weightKg;
-        _gender = profile.gender;
-        _goal = profile.goal;
-        _activity = profile.activityLevel;
-        _useMetricHeight = profile.useMetricHeight;
-        _useMetricWeight = profile.useMetricWeight;
-        _cuisinePreference = profile.cuisinePreference;
-        _healthFocus = profile.healthFocus;
-        _profilePic = profile.profilePictureUrl;
+        _updateFromProfile(profile);
+        _initialized = true;
       });
     }
   }
@@ -73,6 +73,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _cuisinePreference = profile.cuisinePreference;
     _healthFocus = profile.healthFocus;
     _profilePic = profile.profilePictureUrl;
+    _obsoleteProfileImages.clear();
   }
 
   @override
@@ -117,6 +118,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       );
 
       await ref.read(profileRepositoryProvider).saveProfile(profile);
+      for (final imagePath in _obsoleteProfileImages) {
+        await ref.read(localFileStorageServiceProvider).deleteIfManaged(imagePath);
+      }
+      _obsoleteProfileImages.clear();
       ref.invalidate(currentProfileProvider);
       
       if (mounted) {
@@ -135,10 +140,177 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     }
   }
 
+  Future<void> _showPhotoOptions() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Profile picture',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 16),
+            _buildActionTile(
+              icon: LucideIcons.camera,
+              title: 'Take photo',
+              subtitle: 'Use your camera for a fresh profile shot.',
+              onTap: () {
+                Navigator.pop(context);
+                _changeProfilePicture(ImageSource.camera);
+              },
+            ),
+            _buildActionTile(
+              icon: LucideIcons.image,
+              title: 'Choose from gallery',
+              subtitle: 'Pick an image from your existing photos.',
+              onTap: () {
+                Navigator.pop(context);
+                _changeProfilePicture(ImageSource.gallery);
+              },
+            ),
+            if ((_profilePic ?? '').isNotEmpty)
+              _buildActionTile(
+                icon: LucideIcons.trash,
+                title: 'Remove photo',
+                subtitle: 'Revert to the default avatar.',
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _queueImageForCleanup(_profilePic);
+                    _profilePic = null;
+                  });
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _changeProfilePicture(ImageSource source) async {
+    try {
+      final permissionGranted = await _ensurePickerPermission(source);
+      if (!permissionGranted) return;
+
+      final picker = ref.read(cameraCaptureServiceProvider);
+      final file = source == ImageSource.camera
+          ? await picker.captureFromCamera()
+          : await picker.selectFromGallery();
+      if (file == null || !mounted) return;
+
+      final confirmed = await _showImagePreview(file);
+      if (confirmed != true || !mounted) return;
+
+      final savedPath = await ref
+          .read(localFileStorageServiceProvider)
+          .saveProfileImage(file);
+
+      setState(() {
+        _queueImageForCleanup(_profilePic);
+        _profilePic = savedPath;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture updated. Save the profile to persist it.'),
+            backgroundColor: Color(0xFF027B3D),
+          ),
+        );
+      }
+    } on PlatformException catch (error) {
+      _showErrorSnackBar(
+        'Image access was blocked. Check camera/photo permissions and try again. ($error)',
+      );
+    } catch (error) {
+      _showErrorSnackBar('Unable to update profile picture. $error');
+    }
+  }
+
+  Future<bool> _ensurePickerPermission(ImageSource source) async {
+    final permission = source == ImageSource.camera
+        ? Permission.camera
+        : Platform.isIOS
+            ? Permission.photos
+            : null;
+
+    if (permission == null) return true;
+
+    final status = await permission.request();
+    if (status.isGranted || status.isLimited) {
+      return true;
+    }
+
+    if (status.isPermanentlyDenied && mounted) {
+      _showErrorSnackBar(
+        'Permission is permanently denied. Please enable it from system settings.',
+      );
+      await openAppSettings();
+      return false;
+    }
+
+    _showErrorSnackBar('Permission denied. We can’t access that image source yet.');
+    return false;
+  }
+
+  Future<bool?> _showImagePreview(XFile imageFile) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Use this photo?'),
+        content: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Image.file(
+            File(imageFile.path),
+            width: 220,
+            height: 220,
+            fit: BoxFit.cover,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Use Photo'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _queueImageForCleanup(String? imagePath) {
+    if (imagePath == null || imagePath.isEmpty) return;
+    if (!AppImage.isLocalPath(imagePath)) return;
+    _obsoleteProfileImages.add(imagePath);
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final profileAsync = ref.watch(currentProfileProvider);
+    final themeMode = ref.watch(themeProvider);
 
     // Listen for profile changes to update local state if needed (e.g. after initial load)
     ref.listen(currentProfileProvider, (previous, next) {
@@ -153,7 +325,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAF9F6),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: profileAsync.when(
           loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF027B3D))),
@@ -183,6 +355,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     style: TextStyle(color: Colors.black38, fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 40),
+
+                  _buildProfileAppearanceCard(context),
+                  const SizedBox(height: 24),
+
+                  _buildSectionTitle('APP APPEARANCE'),
+                  const SizedBox(height: 16),
+                  _buildThemeModeSelector(context, themeMode),
+                  const SizedBox(height: 32),
 
                   _buildSectionTitle('THE METRICS'),
                   const SizedBox(height: 16),
@@ -249,14 +429,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         ),
         const Spacer(),
         GestureDetector(
-          onTap: () async {
-            // Placeholder for image picker upload logic
-            // E.g., await pickImage(), uploadToCloudinary(), set _profilePic
-          },
-          child: CircleAvatar(
-            radius: 18,
-            backgroundImage: NetworkImage(_profilePic ?? 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix'),
-          ),
+          onTap: _showPhotoOptions,
+          child: _buildProfileAvatar(radius: 18),
         ),
       ],
     );
@@ -274,14 +448,148 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
   }
 
+  Widget _buildProfileAppearanceCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final subtitle = (_profilePic ?? '').isEmpty
+        ? 'Tap to choose a photo from your camera or gallery.'
+        : 'Preview is local until you save the profile.';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+      ),
+      child: Row(
+        children: [
+          _buildProfileAvatar(radius: 34),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Profile Picture',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton(
+            onPressed: _showPhotoOptions,
+            child: const Text('Change'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThemeModeSelector(BuildContext context, ThemeMode selectedMode) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Theme Mode',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Your choice is saved on this device and applied app-wide.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: supportedThemeModes
+                .map(
+                  (mode) => ChoiceChip(
+                    label: Text(themeModeLabel(mode)),
+                    selected: selectedMode == mode,
+                    onSelected: (_) {
+                      ref.read(themeProvider.notifier).setThemeMode(mode);
+                    },
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileAvatar({required double radius}) {
+    final initials = _name.text.trim().isEmpty
+        ? 'M'
+        : _name.text.trim().substring(0, 1).toUpperCase();
+
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: const BoxDecoration(
+        color: Color(0xFFE7F3ED),
+        shape: BoxShape.circle,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: AppImage(
+        imagePath: _profilePic,
+        fallback: Center(
+          child: Text(
+            initials,
+            style: TextStyle(
+              color: const Color(0xFF027B3D),
+              fontWeight: FontWeight.w900,
+              fontSize: radius * 0.75,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        backgroundColor: const Color(0xFFE7F3ED),
+        child: Icon(icon, color: const Color(0xFF027B3D), size: 18),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(subtitle),
+      onTap: onTap,
+    );
+  }
+
   Widget _buildMetricItem(BuildContext context, IconData icon, String label, String value, {bool isEditable = false, VoidCallback? onTap}) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: isEditable ? onTap : null,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.black.withValues(alpha: 0.03)),
         ),
@@ -307,6 +615,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   Widget _buildActivityCard(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -328,7 +637,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             onTap: () => _showEditSheet('activity'),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: const Text('Change', style: TextStyle(color: Color(0xFF027B3D), fontWeight: FontWeight.w800, fontSize: 12)),
             ),
           ),
@@ -352,11 +664,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => Container(
+        builder: (context, setSheetState) {
+          final theme = Theme.of(context);
+          return Container(
           padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 40),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -378,7 +692,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   decoration: InputDecoration(
                     hintText: 'Enter your $field',
                     filled: true,
-                    fillColor: const Color(0xFFFAF9F6),
+                    fillColor: theme.scaffoldBackgroundColor,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
                   ),
                 )
@@ -505,7 +819,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 ),
             ],
           ),
-        ),
+        );
+        },
       ),
     );
   }
@@ -523,12 +838,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   Widget _buildGoalCard(String label, bool isSelected, VoidCallback onTap) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFE7F3ED) : Colors.white,
+          color: isSelected
+              ? const Color(0xFFE7F3ED)
+              : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: isSelected ? const Color(0xFF027B3D).withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.04)),
         ),
@@ -544,13 +862,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   Widget _buildPreferenceItem(BuildContext context, String label, String value, IconData icon, {VoidCallback? onTap}) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.black.withValues(alpha: 0.03)),
         ),

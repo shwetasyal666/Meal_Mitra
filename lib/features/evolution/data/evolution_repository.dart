@@ -1,23 +1,40 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:mealmitra/core/config/app_config.dart';
+import 'package:mealmitra/core/errors/app_exception.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
 import 'package:mealmitra/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:mealmitra/features/evolution/domain/evolution_data.dart';
 import 'package:mealmitra/features/profile/data/profile_repository.dart';
 import 'package:mealmitra/features/profile/domain/user_profile.dart';
 
-final evolutionRepositoryProvider = Provider((ref) {
+final evolutionRepositoryProvider = Provider.family<EvolutionRepository, _EvolutionRepositoryArgs>((ref, args) {
   return EvolutionRepository(
     ref.watch(apiClientProvider),
-    uid: ref.watch(authStateProvider).value,
-    profile: ref.watch(currentProfileProvider).value,
+    uid: args.uid,
+    profile: args.profile,
   );
 });
 
-final evolutionDataProvider = FutureProvider<EvolutionData>((ref) {
-  return ref.watch(evolutionRepositoryProvider).fetchEvolutionData();
+final evolutionDataProvider = FutureProvider.autoDispose<EvolutionData>((ref) async {
+  final uid = await ref.watch(authStateProvider.future).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => null,
+      );
+  final profile = await ref.watch(currentProfileProvider.future).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => null,
+      );
+
+  final repository = ref.watch(
+    evolutionRepositoryProvider(
+      _EvolutionRepositoryArgs(uid: uid, profile: profile),
+    ),
+  );
+  return repository.fetchEvolutionData();
 });
 
 class EvolutionRepository {
@@ -33,16 +50,22 @@ class EvolutionRepository {
   });
 
   Future<EvolutionData> fetchEvolutionData() async {
-    if (AppConfig.useFirebase) {
-      return _fetchFirebaseEvolutionData();
-    }
-
     try {
+      if (AppConfig.useFirebase) {
+        return _fetchFirebaseEvolutionData().timeout(const Duration(seconds: 12));
+      }
+
       final response = await _apiClient.get('/profile/evolution');
       if (response == null) return EvolutionData();
       return EvolutionData.fromMap(response as Map<String, dynamic>);
-    } catch (e) {
-      return EvolutionData();
+    } on TimeoutException {
+      throw const AppException(
+        'Evolution data took too long to load. Please try again.',
+      );
+    } catch (error) {
+      throw AppException(
+        'Unable to load your evolution data right now. ${error.toString()}',
+      );
     }
   }
 
@@ -62,7 +85,8 @@ class EvolutionRepository {
         .doc(uid)
         .collection('weight_history')
         .orderBy('recordedAt')
-        .get();
+        .get()
+        .timeout(const Duration(seconds: 12));
 
     final weightHistory = weightDocs.docs
         .map((doc) => WeightPoint.fromMap(doc.data()))
@@ -77,7 +101,8 @@ class EvolutionRepository {
           'capturedAt',
           isGreaterThanOrEqualTo: weekStart.toIso8601String(),
         )
-        .get();
+        .get()
+        .timeout(const Duration(seconds: 12));
 
     final caloriesByDay = <String, int>{};
     final healthConcernByDay = <String, _HealthConcernDay>{};
@@ -210,6 +235,27 @@ class EvolutionRepository {
       breakdown: breakdown,
     );
   }
+}
+
+class _EvolutionRepositoryArgs {
+  const _EvolutionRepositoryArgs({
+    required this.uid,
+    required this.profile,
+  });
+
+  final String? uid;
+  final UserProfile? profile;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is _EvolutionRepositoryArgs &&
+        other.uid == uid &&
+        other.profile == profile;
+  }
+
+  @override
+  int get hashCode => Object.hash(uid, profile);
 }
 
 class _HealthConcernDay {

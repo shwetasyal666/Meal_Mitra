@@ -3,21 +3,22 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
-import 'package:mealmitra/core/services/camera/camera_capture_service.dart';
 import 'package:mealmitra/core/services/api/api_client.dart';
+import 'package:mealmitra/core/services/local_file_storage_service.dart';
 import 'package:mealmitra/features/meal_scan/data/meal_scan_repository.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 
 import 'package:mealmitra/core/config/app_config.dart';
 import 'package:mealmitra/features/meal_scan/data/firebase_meal_repository.dart';
-
-final cameraCaptureServiceProvider = Provider(
-  (ref) => CameraCaptureService(ImagePicker()),
-);
+import 'package:mealmitra/features/meal_scan/data/on_device_food_analysis_service.dart';
 
 final mealScanRepositoryProvider = Provider<MealScanRepository>((ref) {
   if (AppConfig.useFirebase) {
-    return FirebaseMealRepository(ref.watch(apiClientProvider));
+    return FirebaseMealRepository(
+      ref.watch(apiClientProvider),
+      ref.watch(onDeviceFoodAnalysisServiceProvider),
+      ref.watch(localFileStorageServiceProvider),
+    );
   }
   return LocalMealScanRepository(ref.watch(apiClientProvider));
 });

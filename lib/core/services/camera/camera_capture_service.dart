@@ -1,4 +1,9 @@
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+final cameraCaptureServiceProvider = Provider(
+  (ref) => CameraCaptureService(ImagePicker()),
+);
 
 class CameraCaptureService {
   CameraCaptureService(this._picker);

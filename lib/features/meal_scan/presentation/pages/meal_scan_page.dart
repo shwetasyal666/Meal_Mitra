@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:mealmitra/core/services/camera/camera_capture_service.dart';
 import 'package:mealmitra/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:mealmitra/features/dashboard/data/dashboard_repository.dart';
 import 'package:mealmitra/features/meal_scan/presentation/controllers/meal_scan_controller.dart';
