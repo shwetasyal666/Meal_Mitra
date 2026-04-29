@@ -331,6 +331,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         final target = value?.dailyCalorieTarget ?? 2000;
         final consumed = summary.value?.totalCalories ?? 0;
         final progress = target > 0 ? (consumed / target).clamp(0.0, 1.0) : 0.0;
+        final isOverLimit = target > 0 && consumed > target;
+        final progressColor = isOverLimit ? const Color(0xFFEF4444) : const Color(0xFF027B3D);
 
         return Column(
           children: [
@@ -346,7 +348,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                     child: CircularProgressIndicator(
                       value: 1.0,
                       strokeWidth: 16,
-                      color: const Color(0xFF027B3D).withValues(alpha: 0.04),
+                      color: progressColor.withValues(alpha: 0.04),
                     ),
                   ),
                   SizedBox(
@@ -361,7 +363,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                           value: value,
                           strokeWidth: 16,
                           strokeCap: StrokeCap.round,
-                          color: const Color(0xFF027B3D),
+                          color: progressColor,
                         );
                       },
                     ),
@@ -386,9 +388,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                         children: [
                           Text(
                             consumed.toString(),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w900,
-                              color: Colors.black,
+                              color: isOverLimit ? progressColor : Colors.black,
                               fontSize: 54,
                               letterSpacing: -1,
                             ),
@@ -403,10 +405,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                           ),
                         ],
                       ),
-                      const Text(
-                        'kcal consumed',
+                      Text(
+                        isOverLimit ? 'kcal over limit' : 'kcal consumed',
                         style: TextStyle(
-                          color: Color(0xFF027B3D),
+                          color: progressColor,
                           fontWeight: FontWeight.w800,
                           fontSize: 13,
                         ),

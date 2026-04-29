@@ -80,7 +80,12 @@ class EvolutionRepository {
         .get();
 
     final caloriesByDay = <String, int>{};
+    final healthConcernByDay = <String, _HealthConcernDay>{};
     var loggedMealCount = 0;
+    var totalCalories = 0;
+    var totalProtein = 0;
+    var totalCarbs = 0;
+    var totalFat = 0;
 
     for (final doc in mealsDocs.docs) {
       final data = doc.data();
@@ -91,13 +96,35 @@ class EvolutionRepository {
       if (parsed == null) continue;
 
       final dayId = DateFormat('yyyy-MM-dd').format(parsed);
+      final mealCalories = (data['totalCalories'] as num?)?.toInt() ?? 0;
       caloriesByDay.update(
         dayId,
-        (value) => value + ((data['totalCalories'] as num?)?.toInt() ?? 0),
-        ifAbsent: () => (data['totalCalories'] as num?)?.toInt() ?? 0,
+        (value) => value + mealCalories,
+        ifAbsent: () => mealCalories,
       );
       loggedMealCount += 1;
+      totalCalories += mealCalories;
+      totalProtein += (data['protein'] as num?)?.toInt() ?? 0;
+      totalCarbs += (data['carbs'] as num?)?.toInt() ?? 0;
+      totalFat += (data['fat'] as num?)?.toInt() ?? 0;
+
+      final healthLabel = (data['healthLabel'] as String?) ?? 'moderate';
+      final dayConcern = healthConcernByDay.putIfAbsent(
+        dayId,
+        () => _HealthConcernDay(date: dayId),
+      );
+      dayConcern.increment(healthLabel);
     }
+
+    final healthConcernData = _buildHealthConcernData(
+      mealsDocs.docs.map((doc) => doc.data()).toList(),
+      healthConcernByDay,
+      totalCalories,
+      totalProtein,
+      totalCarbs,
+      totalFat,
+      loggedMealCount,
+    );
 
     final calorieHistory = List.generate(7, (index) {
       final day = weekStart.add(Duration(days: index));
@@ -110,6 +137,7 @@ class EvolutionRepository {
         weightHistory: [WeightPoint(weight: profile!.weightKg, date: now)],
         calorieHistory: calorieHistory,
         loggedMealCount: loggedMealCount,
+        healthConcernData: healthConcernData,
       );
     }
 
@@ -126,6 +154,79 @@ class EvolutionRepository {
       weightHistory: weightHistory,
       calorieHistory: calorieHistory,
       loggedMealCount: loggedMealCount,
+      healthConcernData: healthConcernData,
     );
+  }
+
+  HealthConcernData _buildHealthConcernData(
+    List<Map<String, dynamic>> mealsData,
+    Map<String, _HealthConcernDay> healthConcernByDay,
+    int totalCalories,
+    int totalProtein,
+    int totalCarbs,
+    int totalFat,
+    int loggedMealCount,
+  ) {
+    int healthyMeals = 0;
+    int moderateMeals = 0;
+    int avoidMeals = 0;
+
+    for (final data in mealsData) {
+      final healthLabel = (data['healthLabel'] as String?) ?? 'moderate';
+      if (healthLabel == 'healthy') {
+        healthyMeals++;
+      } else if (healthLabel == 'avoid') {
+        avoidMeals++;
+      } else {
+        moderateMeals++;
+      }
+    }
+
+    final breakdown = healthConcernByDay.values
+        .map((e) => MealConcernBreakdown(
+              date: e.date,
+              healthy: e.healthy,
+              moderate: e.moderate,
+              avoid: e.avoid,
+            ))
+        .toList();
+
+    String dominantConcern = 'moderate';
+    if (healthyMeals > moderateMeals && healthyMeals > avoidMeals) {
+      dominantConcern = 'healthy';
+    } else if (avoidMeals > moderateMeals && avoidMeals > healthyMeals) {
+      dominantConcern = 'avoid';
+    }
+
+    return HealthConcernData(
+      healthyMeals: healthyMeals,
+      moderateMeals: moderateMeals,
+      avoidMeals: avoidMeals,
+      averageCalories: loggedMealCount > 0 ? totalCalories / loggedMealCount : 0,
+      averageProtein: loggedMealCount > 0 ? totalProtein / loggedMealCount : 0,
+      averageCarbs: loggedMealCount > 0 ? totalCarbs / loggedMealCount : 0,
+      averageFat: loggedMealCount > 0 ? totalFat / loggedMealCount : 0,
+      dominantConcern: dominantConcern,
+      breakdown: breakdown,
+    );
+  }
+}
+
+class _HealthConcernDay {
+  final String date;
+  int healthy = 0;
+  int moderate = 0;
+  int avoid = 0;
+
+  _HealthConcernDay({required this.date});
+
+  void increment(String healthLabel) {
+    if (healthLabel == 'healthy') {
+      healthy++;
+    } else if (healthLabel == 'avoid') {
+      avoid++;
+    } else {
+      moderate++;
+    }
   }
 }

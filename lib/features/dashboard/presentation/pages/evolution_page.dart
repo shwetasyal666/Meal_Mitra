@@ -67,6 +67,9 @@ class EvolutionPage extends ConsumerWidget {
                     _buildActiveEnergyCard(context, profile, evolution),
                     const SizedBox(height: 24),
 
+                    _buildHealthConcernCard(context, profile, evolution),
+                    const SizedBox(height: 24),
+
                     _buildAchievementsSection(context, profile, evolution),
                     const SizedBox(height: 24),
 
@@ -479,6 +482,234 @@ class EvolutionPage extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildHealthConcernCard(
+    BuildContext context,
+    UserProfile profile,
+    EvolutionData evolution,
+  ) {
+    final healthData = evolution.healthConcernData;
+    final healthScore = healthData.healthScore;
+    final totalMeals = healthData.totalMeals;
+    
+    final scoreColor = healthScore >= 0.7
+        ? const Color(0xFF027B3D)
+        : healthScore >= 0.4
+            ? const Color(0xFFF59E0B)
+            : Colors.red;
+    
+    final scoreLabel = healthScore >= 0.7
+        ? 'Excellent'
+        : healthScore >= 0.4
+            ? 'Good'
+            : 'Needs Work';
+    
+    final dominatLabel = healthData.dominantConcern == 'healthy'
+        ? 'Healthy Choices'
+        : healthData.dominantConcern == 'avoid'
+            ? 'Limit These'
+            : 'Moderate Choices';
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Meal Health Analysis',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    totalMeals == 0
+                        ? 'Log meals to see analysis'
+                        : '$totalMeals meals this week',
+                    style: const TextStyle(
+                      color: Colors.black38,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: scoreColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      LucideIcons.heart,
+                      color: scoreColor,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      scoreLabel,
+                      style: TextStyle(
+                        color: scoreColor,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: _buildHealthStatItem(
+                  'Healthy',
+                  healthData.healthyMeals,
+                  const Color(0xFF027B3D),
+                  totalMeals,
+                ),
+              ),
+              Expanded(
+                child: _buildHealthStatItem(
+                  'Moderate',
+                  healthData.moderateMeals,
+                  const Color(0xFFF59E0B),
+                  totalMeals,
+                ),
+              ),
+              Expanded(
+                child: _buildHealthStatItem(
+                  'Avoid',
+                  healthData.avoidMeals,
+                  Colors.red,
+                  totalMeals,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          if (totalMeals > 0) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                height: 12,
+                child: Row(
+                  children: [
+                    if (healthData.healthyMeals > 0)
+                      Expanded(
+                        flex: healthData.healthyMeals,
+                        child: Container(color: const Color(0xFF027B3D)),
+                      ),
+                    if (healthData.moderateMeals > 0)
+                      Expanded(
+                        flex: healthData.moderateMeals,
+                        child: Container(color: const Color(0xFFF59E0B)),
+                      ),
+                    if (healthData.avoidMeals > 0)
+                      Expanded(
+                        flex: healthData.avoidMeals,
+                        child: Container(color: Colors.red),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Avg: ${healthData.averageCalories.toStringAsFixed(0)} kcal',
+                  style: const TextStyle(
+                    color: Colors.black45,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  dominatLabel,
+                  style: const TextStyle(
+                    color: Colors.black45,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'P: ${healthData.averageProtein.toStringAsFixed(0)}g  C: ${healthData.averageCarbs.toStringAsFixed(0)}g  F: ${healthData.averageFat.toStringAsFixed(0)}g',
+                  style: const TextStyle(
+                    color: Colors.black45,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHealthStatItem(String label, int count, Color color, int total) {
+    final percentage = total > 0 ? (count / total * 100).toStringAsFixed(0) : '0';
+    return Column(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              count.toString(),
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.black54,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        Text(
+          '$percentage%',
+          style: TextStyle(
+            color: color.withValues(alpha: 0.7),
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 
