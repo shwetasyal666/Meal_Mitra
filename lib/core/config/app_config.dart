@@ -7,25 +7,20 @@ class AppConfig {
   /// Set to `false` to use the existing Node.js backend.
   static const bool useFirebase = true;
 
-  /// Optional hosted manifest endpoint for app updates.
-  /// Expected shape:
-  /// {
-  ///   "version": "1.2.0",
-  ///   "mandatory": false,
-  ///   "notes": "Release notes",
-  ///   "apkUrl": "https://...",
-  ///   "releaseUrl": "https://..."
-  /// }
-  static const String updateManifestUrl = String.fromEnvironment(
-    'UPDATE_MANIFEST_URL',
-    defaultValue: '',
-  );
-
-  /// GitHub repository in `owner/repo` format used when no update manifest URL
-  /// is provided.
+  /// GitHub repository in `owner/repo` format used for APK release checks.
   static const String githubRepo = String.fromEnvironment(
     'GITHUB_REPO',
+    defaultValue: 'shwetasyal666/Meal_Mitra',
+  );
+
+  /// Cloudinary config for client-side uploads.
+  static const String cloudinaryCloudName = String.fromEnvironment(
+    'CLOUDINARY_CLOUD_NAME',
     defaultValue: '',
+  );
+  static const String cloudinaryUploadPreset = String.fromEnvironment(
+    'CLOUDINARY_UPLOAD_PRESET',
+    defaultValue: 'mealmitra_unsigned',
   );
 
   /// Google Sign-In Client ID for Web.

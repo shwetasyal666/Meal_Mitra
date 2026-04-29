@@ -9,13 +9,13 @@ abstract class MealScanRepository {
     required String mealType,
   });
 
+  Future<void> saveMeal({required String uid, required MealAnalysis analysis});
+
   Future<void> deleteMeal(String id);
 }
 
 class LocalMealScanRepository implements MealScanRepository {
-  LocalMealScanRepository(this._apiClient);
-
-  final ApiClient _apiClient;
+  LocalMealScanRepository(ApiClient apiClient);
 
   @override
   Future<MealAnalysis> analyzeMeal({
@@ -23,21 +23,30 @@ class LocalMealScanRepository implements MealScanRepository {
     required XFile imageFile,
     required String mealType,
   }) async {
-    final response = await _apiClient.postMultipart(
-      '/meals/analyze',
-      fileField: 'image',
-      fileBytes: await imageFile.readAsBytes(),
-      fileName: imageFile.name,
-      fields: {
-        'mealType': mealType,
-      },
+    final mealId = DateTime.now().millisecondsSinceEpoch.toString();
+    return MealAnalysis(
+      mealId: mealId,
+      mealType: mealType,
+      capturedAtIso: DateTime.now().toIso8601String(),
+      totalCalories: 0,
+      healthLabel: 'moderate',
+      imageUrl: imageFile.path,
+      suggestions: const [
+        'Add the visible foods from the catalog to calculate this meal.',
+      ],
     );
-
-    return MealAnalysis.fromMap(response);
   }
 
   @override
-  Future<void> deleteMeal(String id) async {
-    await _apiClient.delete('/meals/$id');
+  Future<void> saveMeal({
+    required String uid,
+    required MealAnalysis analysis,
+  }) async {
+    if (analysis.detectedItems.isEmpty) {
+      throw Exception('Add at least one food item before logging this meal.');
+    }
   }
+
+  @override
+  Future<void> deleteMeal(String id) async {}
 }

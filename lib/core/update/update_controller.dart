@@ -32,10 +32,7 @@ class AppUpdateController extends Notifier<AppUpdateState> {
   Future<void> checkForUpdates() async {
     if (state.isChecking) return;
 
-    state = state.copyWith(
-      isChecking: true,
-      error: null,
-    );
+    state = state.copyWith(isChecking: true, error: null);
 
     try {
       final update = await _updateService.checkForUpdate();
@@ -49,10 +46,7 @@ class AppUpdateController extends Notifier<AppUpdateState> {
         requiresInstallPermission: false,
       );
     } catch (error) {
-      state = state.copyWith(
-        isChecking: false,
-        error: error.toString(),
-      );
+      state = state.copyWith(isChecking: false, error: error.toString());
     }
   }
 
@@ -75,7 +69,7 @@ class AppUpdateController extends Notifier<AppUpdateState> {
 
     state = state.copyWith(
       isDownloading: true,
-      downloadProgress: 0,
+      downloadProgress: 0.0,
       error: null,
       requiresInstallPermission: false,
     );
@@ -94,14 +88,11 @@ class AppUpdateController extends Notifier<AppUpdateState> {
       state = state.copyWith(
         isDownloading: false,
         downloadedApkPath: apkPath,
-        downloadProgress: 1,
+        downloadProgress: 1.0,
       );
       await installDownloadedApk();
     } catch (error) {
-      state = state.copyWith(
-        isDownloading: false,
-        error: error.toString(),
-      );
+      state = state.copyWith(isDownloading: false, error: error.toString());
     }
   }
 
@@ -120,10 +111,7 @@ class AppUpdateController extends Notifier<AppUpdateState> {
         return;
       }
 
-      state = state.copyWith(
-        requiresInstallPermission: false,
-        error: null,
-      );
+      state = state.copyWith(requiresInstallPermission: false, error: null);
       await _apkInstallService.installApk(apkPath);
     } catch (error) {
       state = state.copyWith(error: error.toString());
@@ -178,14 +166,22 @@ class AppUpdateState {
       dismissed: dismissed ?? this.dismissed,
       requiresInstallPermission:
           requiresInstallPermission ?? this.requiresInstallPermission,
-      update: identical(update, _unset) ? this.update : update as AppUpdateInfo?,
+      update: identical(update, _unset)
+          ? this.update
+          : update as AppUpdateInfo?,
       error: identical(error, _unset) ? this.error : error as String?,
       downloadProgress: identical(downloadProgress, _unset)
           ? this.downloadProgress
-          : downloadProgress as double?,
+          : _progressFrom(downloadProgress),
       downloadedApkPath: identical(downloadedApkPath, _unset)
           ? this.downloadedApkPath
           : downloadedApkPath as String?,
     );
+  }
+
+  double? _progressFrom(Object? value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return value as double?;
   }
 }

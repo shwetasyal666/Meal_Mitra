@@ -101,7 +101,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.transparent, // Let MainLayout handle it
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -227,6 +227,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           final date = dates[index];
           final isSelected = DateUtils.isSameDay(date, selectedDate);
           final isToday = DateUtils.isSameDay(date, now);
+          final theme = Theme.of(context);
+          final onSurface = theme.colorScheme.onSurface;
 
           return GestureDetector(
             onTap: () {
@@ -241,12 +243,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
               width: _dateItemWidth,
               margin: const EdgeInsets.only(right: _dateItemGap),
               decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF027B3D) : Colors.white,
+                color: isSelected
+                    ? const Color(0xFF027B3D)
+                    : theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: isSelected
                       ? Colors.transparent
-                      : Colors.black.withValues(alpha: 0.04),
+                      : onSurface.withValues(alpha: 0.06),
                 ),
                 boxShadow: isSelected
                     ? [
@@ -264,7 +268,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   Text(
                     DateFormat('E').format(date).toUpperCase(),
                     style: TextStyle(
-                      color: isSelected ? Colors.white70 : Colors.black26,
+                      color: isSelected
+                          ? Colors.white70
+                          : onSurface.withValues(alpha: 0.34),
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                     ),
@@ -273,7 +279,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   Text(
                     date.day.toString(),
                     style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.black87,
+                      color: isSelected ? Colors.white : onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
                     ),
@@ -301,15 +307,18 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   }
 
   Widget _buildIconBtn(IconData icon, VoidCallback onTap) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+          border: Border.all(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.02),
@@ -318,7 +327,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             ),
           ],
         ),
-        child: Icon(icon, color: Colors.black54, size: 20),
+        child: Icon(
+          icon,
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.58),
+          size: 20,
+        ),
       ),
     );
   }
@@ -333,7 +346,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         final consumed = summary.value?.totalCalories ?? 0;
         final progress = target > 0 ? (consumed / target).clamp(0.0, 1.0) : 0.0;
         final isOverLimit = target > 0 && consumed > target;
-        final progressColor = isOverLimit ? const Color(0xFFEF4444) : const Color(0xFF027B3D);
+        final progressColor = isOverLimit
+            ? const Color(0xFFEF4444)
+            : const Color(0xFF027B3D);
 
         return Column(
           children: [
@@ -372,11 +387,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
+                      Text(
                         'ENERGY BALANCE',
                         style: TextStyle(
                           fontWeight: FontWeight.w900,
-                          color: Colors.black38,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.48),
                           fontSize: 10,
                           letterSpacing: 1.5,
                         ),
@@ -391,16 +408,20 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                             consumed.toString(),
                             style: TextStyle(
                               fontWeight: FontWeight.w900,
-                              color: isOverLimit ? progressColor : Colors.black,
+                              color: isOverLimit
+                                  ? progressColor
+                                  : Theme.of(context).colorScheme.onSurface,
                               fontSize: 54,
                               letterSpacing: -1,
                             ),
                           ),
                           Text(
                             ' / $target',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: Colors.black26,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.32),
                               fontSize: 18,
                             ),
                           ),
@@ -455,14 +476,15 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
 
   Widget _buildMacroBar(String label, int current, int target, Color color) {
     final progress = (current / target).clamp(0.0, 1.0);
+    final theme = Theme.of(context);
     return Column(
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w900,
-            color: Colors.black38,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.48),
             letterSpacing: 1,
           ),
         ),
@@ -490,18 +512,18 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             children: [
               TextSpan(
                 text: '${current}g',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
-                  color: Colors.black,
+                  color: theme.colorScheme.onSurface,
                 ),
               ),
               TextSpan(
                 text: ' / ${target}g',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: Colors.black26,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.32),
                 ),
               ),
             ],
@@ -517,7 +539,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
       child: meals.when(
         data: (mealList) {
           if (mealList.isEmpty) {
-            return const Center(child: Text('No scans today'));
+            return Center(
+              child: Text(
+                'No scans today',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            );
           }
           return ListView.builder(
             scrollDirection: Axis.horizontal,
@@ -539,6 +566,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         ? mealData
         : MealRecord.fromMap(mealData['id'] ?? '', mealData);
     final imageUrl = _resolveImagePath(api.baseUrl, meal.imageUrl);
+    final theme = Theme.of(context);
 
     return GestureDetector(
       onTap: () {
@@ -553,9 +581,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         width: 160,
         margin: const EdgeInsets.only(right: 16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+          border: Border.all(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -606,7 +636,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                 children: [
                   Text(
                     meal.mealType.toUpperCase(),
-                    style: const TextStyle(
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
                       fontWeight: FontWeight.w900,
                       fontSize: 13,
                       letterSpacing: 0.5,
@@ -614,8 +645,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
                   ),
                   Text(
                     '${meal.totalCalories} kcal',
-                    style: const TextStyle(
-                      color: Colors.black38,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface.withValues(
+                        alpha: 0.48,
+                      ),
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),

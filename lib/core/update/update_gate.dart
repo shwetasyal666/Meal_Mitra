@@ -73,7 +73,7 @@ class _UpdateBanner extends ConsumerWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Version ${state.update?.latestVersion} is available',
+                    'Version ${state.update?.latestLabel} is available',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -185,7 +185,7 @@ class _MandatoryUpdateScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Version ${state.update?.latestVersion} must be installed before you can keep using MealMitra.',
+                    'Version ${state.update?.latestLabel} must be installed before you can keep using MealMitra.',
                     style: theme.textTheme.bodyLarge,
                   ),
                   if (notes != null && notes.isNotEmpty) ...[

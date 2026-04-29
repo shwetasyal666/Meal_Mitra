@@ -1,25 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:mealmitra/core/services/api/api_client.dart';
-import 'package:mealmitra/core/services/local_file_storage_service.dart';
+import 'package:mealmitra/core/services/cloudinary_upload_service.dart';
 import 'package:mealmitra/features/meal_scan/data/meal_scan_repository.dart';
-import 'package:mealmitra/features/meal_scan/data/on_device_food_analysis_service.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 
 class FirebaseMealRepository implements MealScanRepository {
-  FirebaseMealRepository(
-    this._apiClient,
-    this._analysisService,
-    this._localFileStorageService,
-  );
+  FirebaseMealRepository(this._cloudinaryUploadService);
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final ApiClient _apiClient;
-  final OnDeviceFoodAnalysisService _analysisService;
-  final LocalFileStorageService _localFileStorageService;
+  final CloudinaryUploadService _cloudinaryUploadService;
 
   @override
   Future<MealAnalysis> analyzeMeal({
@@ -28,27 +19,41 @@ class FirebaseMealRepository implements MealScanRepository {
     required String mealType,
   }) async {
     final mealId = DateTime.now().millisecondsSinceEpoch.toString();
-    final imagePath = await _localFileStorageService.saveMealImage(
-      imageFile: imageFile,
+    final imageUrl = await _cloudinaryUploadService.uploadMealImage(
+      uid: uid,
       mealId: mealId,
+      imageFile: imageFile,
     );
 
-    final data = await _loadAnalysisData(
-      imageFile: imageFile,
+    return MealAnalysis(
       mealId: mealId,
       mealType: mealType,
-      imagePath: imagePath,
+      capturedAtIso: DateTime.now().toIso8601String(),
+      totalCalories: 0,
+      healthLabel: 'moderate',
+      imageUrl: imageUrl,
+      suggestions: const [
+        'Add the visible foods from the catalog to calculate this meal.',
+      ],
     );
-    final aiResult = MealAnalysis.fromMap(data);
+  }
 
+  @override
+  Future<void> saveMeal({
+    required String uid,
+    required MealAnalysis analysis,
+  }) async {
+    if (analysis.detectedItems.isEmpty) {
+      throw Exception('Add at least one food item before logging this meal.');
+    }
+
+    final data = _toFirestoreMap(analysis);
     await _firestore
         .collection('users')
         .doc(uid)
         .collection('meals')
-        .doc(mealId)
-        .set(data);
-
-    return aiResult;
+        .doc(analysis.mealId)
+        .set(data, SetOptions(merge: true));
   }
 
   @override
@@ -58,147 +63,90 @@ class FirebaseMealRepository implements MealScanRepository {
       throw Exception('No authenticated Firebase user found.');
     }
 
-    final docRef = _firestore.collection('users').doc(uid).collection('meals').doc(id);
-    final existingDoc = await docRef.get();
-    final imagePath = existingDoc.data()?['imageUrl'] as String?;
-
-    await docRef.delete();
-    await _localFileStorageService.deleteIfManaged(imagePath);
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('meals')
+        .doc(id)
+        .delete();
   }
 
-  Future<Map<String, dynamic>> _loadAnalysisData({
-    required XFile imageFile,
-    required String mealId,
-    required String mealType,
-    required String imagePath,
-  }) async {
-    try {
-      final draft = await _analysisService.analyze(
-        imageFile: imageFile,
-        mealType: mealType,
-      );
-      return _buildLocalAnalysisDocument(
-        mealId: mealId,
-        mealType: mealType,
-        imagePath: imagePath,
-        draft: draft,
-      );
-    } catch (error) {
-      debugPrint('On-device analysis failed: $error');
+  Map<String, dynamic> _toFirestoreMap(MealAnalysis analysis) {
+    final totals = _macroTotals(analysis.detectedItems);
+    final totalCalories = totals['totalCalories']!;
+    final healthLabel = _healthLabel(totalCalories);
 
-      try {
-        final response = await _apiClient.postMultipart(
-          '/meals/analyze-public',
-          fileField: 'image',
-          fileBytes: await imageFile.readAsBytes(),
-          fileName: _safeFileName(imageFile),
-          fields: {'mealType': mealType},
-        );
-        return _normalizeBackendResponse(
-          response,
-          mealId: mealId,
-          mealType: mealType,
-          imagePath: imagePath,
-        );
-      } catch (backendError) {
-        throw Exception(
-          'Meal analysis failed on-device and via backend fallback. '
-          'On-device error: $error. Backend error: $backendError',
-        );
-      }
-    }
-  }
-
-  Map<String, dynamic> _buildLocalAnalysisDocument({
-    required String mealId,
-    required String mealType,
-    required String imagePath,
-    required MealAnalysisDraft draft,
-  }) {
     return {
-      'id': mealId,
-      'mealId': mealId,
-      'mealType': mealType,
-      'imageUrl': imagePath,
-      'capturedAt': DateTime.now().toIso8601String(),
-      'totalCalories': draft.totalCalories,
-      'protein': draft.protein,
-      'carbs': draft.carbs,
-      'fat': draft.fat,
-      'healthLabel': draft.healthLabel,
-      'suggestions': draft.suggestions,
-      'detectedItems': draft.detectedItems.map((item) => item.toMap()).toList(),
-      'analysisSource': 'on_device_mlkit',
+      'id': analysis.mealId,
+      'mealId': analysis.mealId,
+      'mealType': analysis.mealType,
+      'imageUrl': analysis.imageUrl ?? '',
+      'capturedAt': analysis.capturedAtIso ?? DateTime.now().toIso8601String(),
+      'totalCalories': totalCalories,
+      'protein': totals['protein'],
+      'carbs': totals['carbs'],
+      'fat': totals['fat'],
+      'healthLabel': healthLabel,
+      'suggestions': _suggestions(analysis.mealType, totalCalories, totals),
+      'detectedItems': analysis.detectedItems
+          .map((item) => item.toMap())
+          .toList(),
+      'analysisSource': 'manual_catalog',
     };
   }
 
-  Map<String, dynamic> _normalizeBackendResponse(
-    dynamic response, {
-    required String mealId,
-    required String mealType,
-    required String imagePath,
-  }) {
-    if (response is! Map<String, dynamic>) {
-      throw Exception('Invalid analysis response from backend.');
-    }
+  Map<String, int> _macroTotals(List<DetectedFoodItem> items) {
+    var totalCalories = 0;
+    var protein = 0;
+    var carbs = 0;
+    var fat = 0;
 
-    return {
-      'id': mealId,
-      'mealId': mealId,
-      'mealType': (response['mealType'] ?? mealType).toString(),
-      'imageUrl': imagePath,
-      'capturedAt': (response['capturedAt'] ?? DateTime.now().toIso8601String())
-          .toString(),
-      'totalCalories': (response['totalCalories'] as num?)?.toInt() ?? 0,
-      'protein': (response['protein'] as num?)?.toInt() ?? _sumMacro(
-            List<dynamic>.from(response['detectedItems'] ?? const []),
-            'protein',
-          ),
-      'carbs': (response['carbs'] as num?)?.toInt() ??
-          _sumMacro(
-            List<dynamic>.from(response['detectedItems'] ?? const []),
-            'carbs',
-          ),
-      'fat': (response['fat'] as num?)?.toInt() ??
-          _sumMacro(
-            List<dynamic>.from(response['detectedItems'] ?? const []),
-            'fat',
-          ),
-      'healthLabel': _normalizeHealthLabel(response['healthLabel']),
-      'suggestions': List<String>.from(response['suggestions'] ?? const []),
-      'detectedItems': List<dynamic>.from(response['detectedItems'] ?? const []),
-      'analysisSource': 'backend_fallback',
-    };
-  }
-
-  String _normalizeHealthLabel(Object? value) {
-    switch (value?.toString().toLowerCase()) {
-      case 'healthy':
-      case 'good':
-      case 'green':
-        return 'healthy';
-      case 'avoid':
-      case 'red':
-        return 'avoid';
-      default:
-        return 'moderate';
-    }
-  }
-
-  int _sumMacro(List<dynamic> items, String key) {
-    var total = 0;
     for (final item in items) {
-      if (item is Map<String, dynamic>) {
-        total += (item[key] as num?)?.toInt() ?? 0;
-      }
+      totalCalories += (item.calories * item.quantity).round();
+      protein += (item.protein * item.quantity).round();
+      carbs += (item.carbs * item.quantity).round();
+      fat += (item.fat * item.quantity).round();
     }
-    return total;
+
+    return {
+      'totalCalories': totalCalories,
+      'protein': protein,
+      'carbs': carbs,
+      'fat': fat,
+    };
   }
 
-  String _safeFileName(XFile imageFile) {
-    if (imageFile.name.isNotEmpty) return imageFile.name;
-    final path = imageFile.path;
-    if (path.isEmpty) return 'meal.jpg';
-    return path.split('/').last;
+  String _healthLabel(int calories) {
+    if (calories >= 800) return 'avoid';
+    if (calories <= 450) return 'healthy';
+    return 'moderate';
+  }
+
+  List<String> _suggestions(
+    String mealType,
+    int totalCalories,
+    Map<String, int> totals,
+  ) {
+    final suggestions = <String>[
+      'Review the selected foods and portions before logging this $mealType.',
+    ];
+
+    if ((totals['protein'] ?? 0) < 15) {
+      suggestions.add(
+        'Protein looks light. Add dal, paneer, eggs, curd, tofu, or lean meat if it matches the meal.',
+      );
+    }
+
+    if (totalCalories >= 800) {
+      suggestions.add(
+        'This is a calorie-dense meal. Reduce portions or balance it with lighter meals later.',
+      );
+    } else {
+      suggestions.add(
+        'This estimate is based on the foods and portions you selected from the catalog.',
+      );
+    }
+
+    return suggestions.take(3).toList();
   }
 }

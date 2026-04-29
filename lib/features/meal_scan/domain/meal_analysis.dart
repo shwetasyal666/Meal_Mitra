@@ -68,6 +68,8 @@ class MealAnalysis {
     required this.totalCalories,
     required this.healthLabel,
     required this.suggestions,
+    this.mealType = 'Meal',
+    this.capturedAtIso,
     this.detectedItems = const [],
     this.imageUrl,
   });
@@ -76,6 +78,8 @@ class MealAnalysis {
   final int totalCalories;
   final String healthLabel;
   final List<String> suggestions;
+  final String mealType;
+  final String? capturedAtIso;
   final List<DetectedFoodItem> detectedItems;
   final String? imageUrl;
 
@@ -84,13 +88,20 @@ class MealAnalysis {
       mealId: (map['id'] ?? map['mealId'] ?? '') as String,
       totalCalories: (map['totalCalories'] as num?)?.toInt() ?? 0,
       healthLabel: (map['healthLabel'] as String?) ?? 'moderate',
-      suggestions: (map['suggestions'] as List<dynamic>?)
+      mealType: (map['mealType'] as String?) ?? 'Meal',
+      capturedAtIso: map['capturedAt'] as String?,
+      suggestions:
+          (map['suggestions'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],
-      detectedItems: (map['detectedItems'] as List<dynamic>?)
-              ?.map((e) => DetectedFoodItem.fromMap(
-                  Map<String, dynamic>.from(e as Map)))
+      detectedItems:
+          (map['detectedItems'] as List<dynamic>?)
+              ?.map(
+                (e) => DetectedFoodItem.fromMap(
+                  Map<String, dynamic>.from(e as Map),
+                ),
+              )
               .toList() ??
           [],
       imageUrl: map['imageUrl'] as String?,
@@ -100,6 +111,9 @@ class MealAnalysis {
   Map<String, dynamic> toMap() {
     return {
       'id': mealId,
+      'mealId': mealId,
+      'mealType': mealType,
+      'capturedAt': capturedAtIso,
       'totalCalories': totalCalories,
       'healthLabel': healthLabel,
       'suggestions': suggestions,
@@ -113,6 +127,8 @@ class MealAnalysis {
     int? totalCalories,
     String? healthLabel,
     List<String>? suggestions,
+    String? mealType,
+    String? capturedAtIso,
     List<DetectedFoodItem>? detectedItems,
     String? imageUrl,
   }) {
@@ -121,6 +137,8 @@ class MealAnalysis {
       totalCalories: totalCalories ?? this.totalCalories,
       healthLabel: healthLabel ?? this.healthLabel,
       suggestions: suggestions ?? this.suggestions,
+      mealType: mealType ?? this.mealType,
+      capturedAtIso: capturedAtIso ?? this.capturedAtIso,
       detectedItems: detectedItems ?? this.detectedItems,
       imageUrl: imageUrl ?? this.imageUrl,
     );

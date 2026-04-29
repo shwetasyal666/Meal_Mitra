@@ -9,7 +9,7 @@ class AppTheme {
   static const Color textMain = Color(0xFF1E1E1E);
   static const Color textSecondary = Color(0xFF6B7280);
   static const Color accentGreen = Color(0xFF4ADE80);
-  
+
   // Status Colors
   static const Color statusYellow = Color(0xFFEAB308);
   static const Color statusOrange = Color(0xFFF97316);
@@ -22,6 +22,40 @@ class AppTheme {
   static const Color textDarkMain = Color(0xFFF3F4F6);
   static const Color textDarkSecondary = Color(0xFF9CA3AF);
 
+  static TextTheme _baseTextTheme(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    final base = isDark
+        ? ThemeData.dark().textTheme
+        : ThemeData.light().textTheme;
+    final mainColor = isDark ? textDarkMain : textMain;
+    final secondaryColor = isDark ? textDarkSecondary : textSecondary;
+
+    return GoogleFonts.interTextTheme(base)
+        .apply(bodyColor: mainColor, displayColor: mainColor)
+        .copyWith(
+          bodySmall: GoogleFonts.inter(
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            color: secondaryColor,
+            height: 1.35,
+          ),
+          labelSmall: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: secondaryColor,
+          ),
+          labelMedium: GoogleFonts.inter(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: mainColor,
+          ),
+          titleSmall: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: mainColor,
+          ),
+        );
+  }
 
   static ThemeData light() {
     final colorScheme = ColorScheme.fromSeed(
@@ -36,7 +70,7 @@ class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor: backgroundCream,
       useMaterial3: true,
-      textTheme: GoogleFonts.interTextTheme().copyWith(
+      textTheme: _baseTextTheme(Brightness.light).copyWith(
         headlineLarge: GoogleFonts.outfit(
           fontSize: 32,
           fontWeight: FontWeight.w800,
@@ -156,7 +190,10 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 24,
+          vertical: 20,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(24),
           borderSide: BorderSide.none,
@@ -170,8 +207,26 @@ class AppTheme {
           borderSide: const BorderSide(color: primaryGreen, width: 2),
         ),
       ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: surfaceWhite,
+        titleTextStyle: GoogleFonts.outfit(
+          color: textMain,
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+        ),
+        contentTextStyle: GoogleFonts.inter(color: textSecondary, fontSize: 14),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: surfaceWhite,
+        modalBackgroundColor: surfaceWhite,
+      ),
+      listTileTheme: const ListTileThemeData(
+        textColor: textMain,
+        iconColor: textSecondary,
+      ),
     );
   }
+
   static ThemeData dark() {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: primaryGreen,
@@ -185,7 +240,7 @@ class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor: backgroundDark,
       useMaterial3: true,
-      textTheme: GoogleFonts.interTextTheme().copyWith(
+      textTheme: _baseTextTheme(Brightness.dark).copyWith(
         headlineLarge: GoogleFonts.outfit(
           fontSize: 32,
           fontWeight: FontWeight.w800,
@@ -305,7 +360,10 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surfaceDark,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 24,
+          vertical: 20,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(24),
           borderSide: BorderSide.none,
@@ -318,6 +376,26 @@ class AppTheme {
           borderRadius: BorderRadius.circular(24),
           borderSide: const BorderSide(color: accentGreen, width: 2),
         ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: surfaceDark,
+        titleTextStyle: GoogleFonts.outfit(
+          color: textDarkMain,
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+        ),
+        contentTextStyle: GoogleFonts.inter(
+          color: textDarkSecondary,
+          fontSize: 14,
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: surfaceDark,
+        modalBackgroundColor: surfaceDark,
+      ),
+      listTileTheme: const ListTileThemeData(
+        textColor: textDarkMain,
+        iconColor: textDarkSecondary,
       ),
     );
   }

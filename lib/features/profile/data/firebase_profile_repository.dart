@@ -65,10 +65,16 @@ class FirebaseProfileRepository implements ProfileRepository {
     await userRef.set(data, SetOptions(merge: true));
 
     if (shouldRecordWeight) {
-      await userRef.collection('weight_history').add({
-        'weightKg': profile.weightKg,
-        'recordedAt': DateTime.now().toIso8601String(),
-      });
+      try {
+        await userRef.collection('weight_history').add({
+          'weightKg': profile.weightKg,
+          'recordedAt': DateTime.now().toIso8601String(),
+        });
+      } on FirebaseException catch (error) {
+        if (error.code != 'permission-denied') {
+          rethrow;
+        }
+      }
     }
   }
 }

@@ -4,21 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import 'package:mealmitra/core/services/api/api_client.dart';
-import 'package:mealmitra/core/services/local_file_storage_service.dart';
+import 'package:mealmitra/core/services/cloudinary_upload_service.dart';
 import 'package:mealmitra/features/meal_scan/data/meal_scan_repository.dart';
 import 'package:mealmitra/features/meal_scan/domain/meal_analysis.dart';
 
 import 'package:mealmitra/core/config/app_config.dart';
 import 'package:mealmitra/features/meal_scan/data/firebase_meal_repository.dart';
-import 'package:mealmitra/features/meal_scan/data/on_device_food_analysis_service.dart';
 
 final mealScanRepositoryProvider = Provider<MealScanRepository>((ref) {
   if (AppConfig.useFirebase) {
-    return FirebaseMealRepository(
-      ref.watch(apiClientProvider),
-      ref.watch(onDeviceFoodAnalysisServiceProvider),
-      ref.watch(localFileStorageServiceProvider),
-    );
+    return FirebaseMealRepository(ref.watch(cloudinaryUploadServiceProvider));
   }
   return LocalMealScanRepository(ref.watch(apiClientProvider));
 });
@@ -107,6 +102,14 @@ class MealScanController extends ChangeNotifier {
       imageFile: state.imageFile,
     );
     notifyListeners();
+  }
+
+  Future<void> saveCurrentMeal({required String uid}) async {
+    final result = state.result;
+    if (result == null) {
+      throw Exception('No meal is ready to log.');
+    }
+    await _repository!.saveMeal(uid: uid, analysis: result);
   }
 
   void reset() {

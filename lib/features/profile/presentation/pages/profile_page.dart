@@ -7,10 +7,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:mealmitra/app/theme/theme_provider.dart';
+import 'package:mealmitra/core/services/cloudinary_upload_service.dart';
 import 'package:mealmitra/features/auth/data/auth_repository.dart';
 import 'package:mealmitra/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:mealmitra/core/services/camera/camera_capture_service.dart';
-import 'package:mealmitra/core/services/local_file_storage_service.dart';
 import 'package:mealmitra/core/widgets/app_image.dart';
 import 'package:mealmitra/features/profile/data/profile_repository.dart';
 import 'package:mealmitra/features/profile/domain/daily_calorie_target_calculator.dart';
@@ -37,9 +37,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   String _cuisinePreference = 'Any';
   String _healthFocus = 'General Wellness';
   String? _profilePic;
-  final Set<String> _obsoleteProfileImages = <String>{};
+  XFile? _pendingProfileImage;
   bool _initialized = false;
   bool _isLoading = false;
+  bool _isUpdatingPhoto = false;
 
   @override
   void initState() {
@@ -73,7 +74,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _cuisinePreference = profile.cuisinePreference;
     _healthFocus = profile.healthFocus;
     _profilePic = profile.profilePictureUrl;
-    _obsoleteProfileImages.clear();
+    _pendingProfileImage = null;
   }
 
   @override
@@ -83,11 +84,20 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     super.dispose();
   }
 
-  Future<void> _save() async {
+  Future<bool> _save({bool showSuccessMessage = true}) async {
     setState(() => _isLoading = true);
     try {
       final uid = ref.read(authStateProvider).value;
-      if (uid == null) return;
+      if (uid == null) return false;
+      String? profilePictureUrl = _profilePic;
+      if (_pendingProfileImage != null) {
+        profilePictureUrl = await ref
+            .read(cloudinaryUploadServiceProvider)
+            .uploadProfileImage(uid: uid, imageFile: _pendingProfileImage!);
+      } else if (profilePictureUrl != null &&
+          !profilePictureUrl.startsWith('http')) {
+        profilePictureUrl = null;
+      }
 
       final age = int.parse(_age.text);
       final target = DailyCalorieTargetCalculator.calculate(
@@ -114,29 +124,39 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         useMetricWeight: _useMetricWeight,
         cuisinePreference: _cuisinePreference,
         healthFocus: _healthFocus,
-        profilePictureUrl: _profilePic,
+        profilePictureUrl: profilePictureUrl,
       );
 
       await ref.read(profileRepositoryProvider).saveProfile(profile);
-      for (final imagePath in _obsoleteProfileImages) {
-        await ref.read(localFileStorageServiceProvider).deleteIfManaged(imagePath);
-      }
-      _obsoleteProfileImages.clear();
+      setState(() {
+        _profilePic = profilePictureUrl;
+        _pendingProfileImage = null;
+      });
       ref.invalidate(currentProfileProvider);
-      
-      if (mounted) {
+
+      if (mounted && showSuccessMessage) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated!'), backgroundColor: Color(0xFF027B3D)),
+          const SnackBar(
+            content: Text('Profile updated!'),
+            backgroundColor: Color(0xFF027B3D),
+          ),
         );
       }
+      return true;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
+      return false;
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isUpdatingPhoto = false;
+        });
+      }
     }
   }
 
@@ -185,9 +205,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 onTap: () {
                   Navigator.pop(context);
                   setState(() {
-                    _queueImageForCleanup(_profilePic);
+                    _pendingProfileImage = null;
                     _profilePic = null;
+                    _isUpdatingPhoto = true;
                   });
+                  _save(showSuccessMessage: false);
                 },
               ),
           ],
@@ -210,23 +232,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       final confirmed = await _showImagePreview(file);
       if (confirmed != true || !mounted) return;
 
-      final savedPath = await ref
-          .read(localFileStorageServiceProvider)
-          .saveProfileImage(file);
-
       setState(() {
-        _queueImageForCleanup(_profilePic);
-        _profilePic = savedPath;
+        _pendingProfileImage = file;
+        _profilePic = file.path;
+        _isUpdatingPhoto = true;
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile picture updated. Save the profile to persist it.'),
-            backgroundColor: Color(0xFF027B3D),
-          ),
-        );
-      }
+      await _save(showSuccessMessage: false);
     } on PlatformException catch (error) {
       _showErrorSnackBar(
         'Image access was blocked. Check camera/photo permissions and try again. ($error)',
@@ -240,8 +252,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final permission = source == ImageSource.camera
         ? Permission.camera
         : Platform.isIOS
-            ? Permission.photos
-            : null;
+        ? Permission.photos
+        : null;
 
     if (permission == null) return true;
 
@@ -258,7 +270,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       return false;
     }
 
-    _showErrorSnackBar('Permission denied. We can’t access that image source yet.');
+    _showErrorSnackBar(
+      'Permission denied. We can’t access that image source yet.',
+    );
     return false;
   }
 
@@ -290,19 +304,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
   }
 
-  void _queueImageForCleanup(String? imagePath) {
-    if (imagePath == null || imagePath.isEmpty) return;
-    if (!AppImage.isLocalPath(imagePath)) return;
-    _obsoleteProfileImages.add(imagePath);
-  }
-
   void _showErrorSnackBar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
@@ -328,14 +333,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: profileAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF027B3D))),
-          error: (err, stack) => Center(child: Text('Error loading profile: $err')),
+          loading: () => const Center(
+            child: CircularProgressIndicator(color: Color(0xFF027B3D)),
+          ),
+          error: (err, stack) =>
+              Center(child: Text('Error loading profile: $err')),
           data: (profile) {
             // If profile is null, it means onboarding was not finished
             if (profile == null) {
-              return const Center(child: Text('Please complete onboarding first.'));
+              return const Center(
+                child: Text('Please complete onboarding first.'),
+              );
             }
-            
+
             return SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Column(
@@ -352,7 +362,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   ),
                   const Text(
                     'Data depth ensures editorial precision.',
-                    style: TextStyle(color: Colors.black38, fontSize: 13, fontWeight: FontWeight.w600),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 40),
 
@@ -366,13 +376,70 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
                   _buildSectionTitle('THE METRICS'),
                   const SizedBox(height: 16),
-                  _buildMetricItem(context, LucideIcons.user, 'Display Name', _name.text, isEditable: true, onTap: () => _showEditSheet('name')),
-                  _buildMetricItem(context, LucideIcons.cake, 'Age', '${_age.text} Years', isEditable: true, onTap: () => _showEditSheet('age')),
-                  _buildMetricItem(context, LucideIcons.ruler, 'Height', UnitConverter.formatHeight(_height.round(), _useMetricHeight), isEditable: true, onTap: () => _showEditSheet('height')),
-                  _buildMetricItem(context, LucideIcons.weight, 'Weight', UnitConverter.formatWeight(_weight.round(), _useMetricWeight), isEditable: true, onTap: () => _showEditSheet('weight')),
-                  _buildMetricItem(context, LucideIcons.users, 'Gender', _gender, isEditable: true, onTap: () => _showEditSheet('gender')),
-                  _buildMetricItem(context, LucideIcons.ruler, 'Metric Height', _useMetricHeight ? 'Yes' : 'No', isEditable: true, onTap: () => setState(() => _useMetricHeight = !_useMetricHeight)),
-                  _buildMetricItem(context, LucideIcons.weight, 'Metric Weight', _useMetricWeight ? 'Yes' : 'No', isEditable: true, onTap: () => setState(() => _useMetricWeight = !_useMetricWeight)),
+                  _buildMetricItem(
+                    context,
+                    LucideIcons.user,
+                    'Display Name',
+                    _name.text,
+                    isEditable: true,
+                    onTap: () => _showEditSheet('name'),
+                  ),
+                  _buildMetricItem(
+                    context,
+                    LucideIcons.cake,
+                    'Age',
+                    '${_age.text} Years',
+                    isEditable: true,
+                    onTap: () => _showEditSheet('age'),
+                  ),
+                  _buildMetricItem(
+                    context,
+                    LucideIcons.ruler,
+                    'Height',
+                    UnitConverter.formatHeight(
+                      _height.round(),
+                      _useMetricHeight,
+                    ),
+                    isEditable: true,
+                    onTap: () => _showEditSheet('height'),
+                  ),
+                  _buildMetricItem(
+                    context,
+                    LucideIcons.weight,
+                    'Weight',
+                    UnitConverter.formatWeight(
+                      _weight.round(),
+                      _useMetricWeight,
+                    ),
+                    isEditable: true,
+                    onTap: () => _showEditSheet('weight'),
+                  ),
+                  _buildMetricItem(
+                    context,
+                    LucideIcons.users,
+                    'Gender',
+                    _gender,
+                    isEditable: true,
+                    onTap: () => _showEditSheet('gender'),
+                  ),
+                  _buildMetricItem(
+                    context,
+                    LucideIcons.ruler,
+                    'Metric Height',
+                    _useMetricHeight ? 'Yes' : 'No',
+                    isEditable: true,
+                    onTap: () =>
+                        setState(() => _useMetricHeight = !_useMetricHeight),
+                  ),
+                  _buildMetricItem(
+                    context,
+                    LucideIcons.weight,
+                    'Metric Weight',
+                    _useMetricWeight ? 'Yes' : 'No',
+                    isEditable: true,
+                    onTap: () =>
+                        setState(() => _useMetricWeight = !_useMetricWeight),
+                  ),
 
                   const SizedBox(height: 32),
                   _buildSectionTitle('THE LIFESTYLE'),
@@ -387,19 +454,35 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   const SizedBox(height: 32),
                   _buildSectionTitle('REGIONAL PREFERENCES'),
                   const SizedBox(height: 16),
-                  _buildPreferenceItem(context, 'Cuisine Type', _cuisinePreference, LucideIcons.mapPin, onTap: () => _showEditSheet('cuisine')),
-                  _buildPreferenceItem(context, 'Health Focus', _healthFocus, LucideIcons.heartPulse, onTap: () => _showEditSheet('focus')),
+                  _buildPreferenceItem(
+                    context,
+                    'Cuisine Type',
+                    _cuisinePreference,
+                    LucideIcons.mapPin,
+                    onTap: () => _showEditSheet('cuisine'),
+                  ),
+                  _buildPreferenceItem(
+                    context,
+                    'Health Focus',
+                    _healthFocus,
+                    LucideIcons.heartPulse,
+                    onTap: () => _showEditSheet('focus'),
+                  ),
 
                   const SizedBox(height: 40),
                   ElevatedButton(
-                    onPressed: _isLoading ? null : _save,
+                    onPressed: _isLoading ? null : () => _save(),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF027B3D),
                       foregroundColor: Colors.white,
                       minimumSize: const Size(double.infinity, 56),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
-                    child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Update Editorial Data'),
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text('Update Editorial Data'),
                   ),
                   const SizedBox(height: 100),
                 ],
@@ -416,7 +499,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       children: [
         IconButton(
           onPressed: () => ref.read(authRepositoryProvider).signOut(),
-          icon: const Icon(LucideIcons.logOut, color: Colors.black45, size: 20),
+          icon: Icon(
+            LucideIcons.logOut,
+            color: _mutedOnSurface(context),
+            size: 20,
+          ),
         ),
         const Spacer(),
         Text(
@@ -437,10 +524,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   Widget _buildSectionTitle(String title) {
+    final theme = Theme.of(context);
     return Text(
       title,
-      style: const TextStyle(
-        color: Colors.black38,
+      style: TextStyle(
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.48),
         fontSize: 10,
         fontWeight: FontWeight.w900,
         letterSpacing: 1.5,
@@ -448,18 +536,43 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
   }
 
+  Color _subtleBorder(BuildContext context) {
+    return Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.07);
+  }
+
+  Color _mutedOnSurface(BuildContext context, [double alpha = 0.55]) {
+    return Theme.of(context).colorScheme.onSurface.withValues(alpha: alpha);
+  }
+
+  Color _softAccentSurface(BuildContext context) {
+    final isDark = Theme.of(context).colorScheme.brightness == Brightness.dark;
+    return isDark ? const Color(0xFF143526) : const Color(0xFFE7F3ED);
+  }
+
+  Color _softNeutralSurface(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.colorScheme.brightness == Brightness.dark;
+    return isDark
+        ? theme.colorScheme.onSurface.withValues(alpha: 0.06)
+        : const Color(0xFFFAF9F6);
+  }
+
   Widget _buildProfileAppearanceCard(BuildContext context) {
     final theme = Theme.of(context);
-    final subtitle = (_profilePic ?? '').isEmpty
+    final subtitle = _isUpdatingPhoto
+        ? 'Updating your profile photo...'
+        : _pendingProfileImage != null
+        ? 'Preview ready.'
+        : (_profilePic ?? '').isEmpty
         ? 'Tap to choose a photo from your camera or gallery.'
-        : 'Preview is local until you save the profile.';
+        : 'Tap to change or remove your profile photo.';
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+        border: Border.all(color: _subtleBorder(context)),
       ),
       child: Row(
         children: [
@@ -474,17 +587,20 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: theme.textTheme.bodyMedium,
-                ),
+                Text(subtitle, style: theme.textTheme.bodyMedium),
               ],
             ),
           ),
           const SizedBox(width: 12),
           OutlinedButton(
-            onPressed: _showPhotoOptions,
-            child: const Text('Change'),
+            onPressed: _isLoading ? null : _showPhotoOptions,
+            child: _isUpdatingPhoto
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Change'),
           ),
         ],
       ),
@@ -493,41 +609,62 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   Widget _buildThemeModeSelector(BuildContext context, ThemeMode selectedMode) {
     final theme = Theme.of(context);
+    final isDark = selectedMode == ThemeMode.dark;
+    final isSystem = selectedMode == ThemeMode.system;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+        border: Border.all(color: _subtleBorder(context)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          const Text(
-            'Theme Mode',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: _softAccentSurface(context),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isDark ? LucideIcons.moon : LucideIcons.sun,
+              color: const Color(0xFF027B3D),
+              size: 20,
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Your choice is saved on this device and applied app-wide.',
-            style: theme.textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: supportedThemeModes
-                .map(
-                  (mode) => ChoiceChip(
-                    label: Text(themeModeLabel(mode)),
-                    selected: selectedMode == mode,
-                    onSelected: (_) {
-                      ref.read(themeProvider.notifier).setThemeMode(mode);
-                    },
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isDark
+                      ? 'Dark Mode'
+                      : isSystem
+                      ? 'System Mode'
+                      : 'Light Mode',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
                   ),
-                )
-                .toList(),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  isDark ? 'Low-light interface' : 'Bright interface',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: isDark,
+            activeThumbColor: const Color(0xFF027B3D),
+            onChanged: (enabled) {
+              ref
+                  .read(themeProvider.notifier)
+                  .setThemeMode(enabled ? ThemeMode.dark : ThemeMode.light);
+            },
           ),
         ],
       ),
@@ -542,8 +679,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     return Container(
       width: radius * 2,
       height: radius * 2,
-      decoration: const BoxDecoration(
-        color: Color(0xFFE7F3ED),
+      decoration: BoxDecoration(
+        color: _softAccentSurface(context),
         shape: BoxShape.circle,
       ),
       clipBehavior: Clip.antiAlias,
@@ -572,7 +709,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: CircleAvatar(
-        backgroundColor: const Color(0xFFE7F3ED),
+        backgroundColor: _softAccentSurface(context),
         child: Icon(icon, color: const Color(0xFF027B3D), size: 18),
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -581,7 +718,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
   }
 
-  Widget _buildMetricItem(BuildContext context, IconData icon, String label, String value, {bool isEditable = false, VoidCallback? onTap}) {
+  Widget _buildMetricItem(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value, {
+    bool isEditable = false,
+    VoidCallback? onTap,
+  }) {
     final theme = Theme.of(context);
     return GestureDetector(
       onTap: isEditable ? onTap : null,
@@ -591,22 +735,43 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.03)),
+          border: Border.all(color: _subtleBorder(context)),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: const BoxDecoration(color: Color(0xFFFAF9F6), shape: BoxShape.circle),
-              child: Icon(icon, size: 18, color: Colors.black54),
+              decoration: BoxDecoration(
+                color: _softNeutralSurface(context),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 18, color: _mutedOnSurface(context)),
             ),
             const SizedBox(width: 16),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
             const Spacer(),
-            Text(value, style: const TextStyle(color: Colors.black45, fontWeight: FontWeight.w600, fontSize: 14)),
+            Text(
+              value,
+              style: TextStyle(
+                color: _mutedOnSurface(context),
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
             if (isEditable) ...[
               const SizedBox(width: 8),
-              const Icon(LucideIcons.chevronRight, size: 16, color: Colors.black26),
+              Icon(
+                LucideIcons.chevronRight,
+                size: 16,
+                color: _mutedOnSurface(context, 0.32),
+              ),
             ],
           ],
         ),
@@ -628,8 +793,22 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Active Energy', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
-                Text('${_activity.name.toUpperCase()} Activity Level', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+                const Text(
+                  'Active Energy',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  '${_activity.name.toUpperCase()} Activity Level',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
@@ -641,7 +820,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 color: theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Text('Change', style: TextStyle(color: Color(0xFF027B3D), fontWeight: FontWeight.w800, fontSize: 12)),
+              child: const Text(
+                'Change',
+                style: TextStyle(
+                  color: Color(0xFF027B3D),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
             ),
           ),
         ],
@@ -667,159 +853,232 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         builder: (context, setSheetState) {
           final theme = Theme.of(context);
           return Container(
-          padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 40),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text('Update $title', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                  const Spacer(),
-                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, size: 20)),
-                ],
+            padding: EdgeInsets.fromLTRB(
+              24,
+              24,
+              24,
+              MediaQuery.of(context).viewInsets.bottom + 40,
+            ),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(32),
               ),
-              const SizedBox(height: 24),
-              if (field == 'name' || field == 'age')
-                TextField(
-                  controller: tempController,
-                  autofocus: true,
-                  keyboardType: field == 'age' ? TextInputType.number : TextInputType.text,
-                  decoration: InputDecoration(
-                    hintText: 'Enter your $field',
-                    filled: true,
-                    fillColor: theme.scaffoldBackgroundColor,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-                  ),
-                )
-              else if (field == 'height' || field == 'weight')
-                Column(
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
                     Text(
-                      field == 'height' 
-                          ? UnitConverter.formatHeight(tempSliderValue.round(), _useMetricHeight)
-                          : UnitConverter.formatWeight(tempSliderValue.round(), _useMetricWeight), 
-                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF027B3D))
+                      'Update $title',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.5,
+                      ),
                     ),
-                    Slider(
-                      value: tempSliderValue,
-                      min: field == 'height' ? 100 : 30,
-                      max: field == 'height' ? 250 : 200,
-                      activeColor: const Color(0xFF027B3D),
-                      onChanged: (v) => setSheetState(() => tempSliderValue = v),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(LucideIcons.x, size: 20),
                     ),
                   ],
-                )
-              else if (field == 'activity')
-                RadioGroup<ActivityLevel>(
-                  groupValue: _activity,
-                  onChanged: (v) {
-                    if (v != null) {
-                      setState(() => _activity = v);
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: Column(
-                    children: ActivityLevel.values
-                        .map((level) => RadioListTile<ActivityLevel>(
-                              title: Text(level.name.toUpperCase(),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w800)),
+                ),
+                const SizedBox(height: 24),
+                if (field == 'name' || field == 'age')
+                  TextField(
+                    controller: tempController,
+                    autofocus: true,
+                    keyboardType: field == 'age'
+                        ? TextInputType.number
+                        : TextInputType.text,
+                    decoration: InputDecoration(
+                      hintText: 'Enter your $field',
+                      filled: true,
+                      fillColor: theme.scaffoldBackgroundColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  )
+                else if (field == 'height' || field == 'weight')
+                  Column(
+                    children: [
+                      Text(
+                        field == 'height'
+                            ? UnitConverter.formatHeight(
+                                tempSliderValue.round(),
+                                _useMetricHeight,
+                              )
+                            : UnitConverter.formatWeight(
+                                tempSliderValue.round(),
+                                _useMetricWeight,
+                              ),
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF027B3D),
+                        ),
+                      ),
+                      Slider(
+                        value: tempSliderValue,
+                        min: field == 'height' ? 100 : 30,
+                        max: field == 'height' ? 250 : 200,
+                        activeColor: const Color(0xFF027B3D),
+                        onChanged: (v) =>
+                            setSheetState(() => tempSliderValue = v),
+                      ),
+                    ],
+                  )
+                else if (field == 'activity')
+                  RadioGroup<ActivityLevel>(
+                    groupValue: _activity,
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() => _activity = v);
+                        Navigator.pop(context);
+                      }
+                    },
+                    child: Column(
+                      children: ActivityLevel.values
+                          .map(
+                            (level) => RadioListTile<ActivityLevel>(
+                              title: Text(
+                                level.name.toUpperCase(),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
                               value: level,
                               activeColor: const Color(0xFF027B3D),
-                            ))
-                        .toList(),
-                  ),
-                )
-              else if (field == 'gender')
-                RadioGroup<String>(
-                  groupValue: _gender,
-                  onChanged: (v) {
-                    if (v != null) {
-                      setState(() => _gender = v);
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: Column(
-                    children: ['Male', 'Female']
-                        .map((g) => RadioListTile<String>(
-                              title: Text(g,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w800)),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  )
+                else if (field == 'gender')
+                  RadioGroup<String>(
+                    groupValue: _gender,
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() => _gender = v);
+                        Navigator.pop(context);
+                      }
+                    },
+                    child: Column(
+                      children: ['Male', 'Female']
+                          .map(
+                            (g) => RadioListTile<String>(
+                              title: Text(
+                                g,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
                               value: g,
                               activeColor: const Color(0xFF027B3D),
-                            ))
-                        .toList(),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  )
+                else if (field == 'cuisine')
+                  RadioGroup<String>(
+                    groupValue: _cuisinePreference,
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() => _cuisinePreference = v);
+                        Navigator.pop(context);
+                      }
+                    },
+                    child: Column(
+                      children:
+                          [
+                                'Any',
+                                'North Indian',
+                                'South Indian',
+                                'Continental',
+                                'Vegan',
+                                'Keto',
+                              ]
+                              .map(
+                                (c) => RadioListTile<String>(
+                                  title: Text(
+                                    c,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  value: c,
+                                  activeColor: const Color(0xFF027B3D),
+                                ),
+                              )
+                              .toList(),
+                    ),
+                  )
+                else if (field == 'focus')
+                  RadioGroup<String>(
+                    groupValue: _healthFocus,
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() => _healthFocus = v);
+                        Navigator.pop(context);
+                      }
+                    },
+                    child: Column(
+                      children:
+                          [
+                                'General Wellness',
+                                'Fat Loss',
+                                'Muscle Gain',
+                                'Diabetic Friendly',
+                                'Heart Health',
+                              ]
+                              .map(
+                                (f) => RadioListTile<String>(
+                                  title: Text(
+                                    f,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  value: f,
+                                  activeColor: const Color(0xFF027B3D),
+                                ),
+                              )
+                              .toList(),
+                    ),
                   ),
-                )
-              else if (field == 'cuisine')
-                RadioGroup<String>(
-                  groupValue: _cuisinePreference,
-                  onChanged: (v) {
-                    if (v != null) {
-                      setState(() => _cuisinePreference = v);
+                const SizedBox(height: 32),
+                if (field != 'activity' &&
+                    field != 'gender' &&
+                    field != 'cuisine' &&
+                    field != 'focus')
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        if (field == 'name') _name.text = tempController.text;
+                        if (field == 'age') _age.text = tempController.text;
+                        if (field == 'height') _height = tempSliderValue;
+                        if (field == 'weight') _weight = tempSliderValue;
+                      });
                       Navigator.pop(context);
-                    }
-                  },
-                  child: Column(
-                    children: ['Any', 'North Indian', 'South Indian', 'Continental', 'Vegan', 'Keto']
-                        .map((c) => RadioListTile<String>(
-                              title: Text(c,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w800)),
-                              value: c,
-                              activeColor: const Color(0xFF027B3D),
-                            ))
-                        .toList(),
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF027B3D),
+                      minimumSize: const Size(double.infinity, 56),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                    child: const Text('Save Changes'),
                   ),
-                )
-              else if (field == 'focus')
-                RadioGroup<String>(
-                  groupValue: _healthFocus,
-                  onChanged: (v) {
-                    if (v != null) {
-                      setState(() => _healthFocus = v);
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: Column(
-                    children: ['General Wellness', 'Fat Loss', 'Muscle Gain', 'Diabetic Friendly', 'Heart Health']
-                        .map((f) => RadioListTile<String>(
-                              title: Text(f,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w800)),
-                              value: f,
-                              activeColor: const Color(0xFF027B3D),
-                            ))
-                        .toList(),
-                  ),
-                ),
-              const SizedBox(height: 32),
-              if (field != 'activity' && field != 'gender' && field != 'cuisine' && field != 'focus')
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      if (field == 'name') _name.text = tempController.text;
-                      if (field == 'age') _age.text = tempController.text;
-                      if (field == 'height') _height = tempSliderValue;
-                      if (field == 'weight') _weight = tempSliderValue;
-                    });
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF027B3D),
-                    minimumSize: const Size(double.infinity, 56),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  ),
-                  child: const Text('Save Changes'),
-                ),
-            ],
-          ),
-        );
+              ],
+            ),
+          );
         },
       ),
     );
@@ -828,11 +1087,29 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   Widget _buildGoalSelector(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _buildGoalCard('Lose Weight', _goal == ProfileGoal.lose, () => setState(() => _goal = ProfileGoal.lose))),
+        Expanded(
+          child: _buildGoalCard(
+            'Lose Weight',
+            _goal == ProfileGoal.lose,
+            () => setState(() => _goal = ProfileGoal.lose),
+          ),
+        ),
         const SizedBox(width: 8),
-        Expanded(child: _buildGoalCard('Keep Fit', _goal == ProfileGoal.maintain, () => setState(() => _goal = ProfileGoal.maintain))),
+        Expanded(
+          child: _buildGoalCard(
+            'Keep Fit',
+            _goal == ProfileGoal.maintain,
+            () => setState(() => _goal = ProfileGoal.maintain),
+          ),
+        ),
         const SizedBox(width: 8),
-        Expanded(child: _buildGoalCard('Gain Mass', _goal == ProfileGoal.gain, () => setState(() => _goal = ProfileGoal.gain))),
+        Expanded(
+          child: _buildGoalCard(
+            'Gain Mass',
+            _goal == ProfileGoal.gain,
+            () => setState(() => _goal = ProfileGoal.gain),
+          ),
+        ),
       ],
     );
   }
@@ -845,23 +1122,47 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
           color: isSelected
-              ? const Color(0xFFE7F3ED)
+              ? _softAccentSurface(context)
               : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: isSelected ? const Color(0xFF027B3D).withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.04)),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF027B3D).withValues(alpha: 0.2)
+                : _subtleBorder(context),
+          ),
         ),
         child: Column(
           children: [
-            Icon(LucideIcons.target, color: isSelected ? const Color(0xFF027B3D) : Colors.black26),
+            Icon(
+              LucideIcons.target,
+              color: isSelected
+                  ? const Color(0xFF027B3D)
+                  : _mutedOnSurface(context, 0.36),
+            ),
             const SizedBox(height: 8),
-            Text(label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: isSelected ? const Color(0xFF0D3B2E) : Colors.black54)),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+                color: isSelected
+                    ? const Color(0xFF027B3D)
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPreferenceItem(BuildContext context, String label, String value, IconData icon, {VoidCallback? onTap}) {
+  Widget _buildPreferenceItem(
+    BuildContext context,
+    String label,
+    String value,
+    IconData icon, {
+    VoidCallback? onTap,
+  }) {
     final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
@@ -871,7 +1172,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.black.withValues(alpha: 0.03)),
+          border: Border.all(color: _subtleBorder(context)),
         ),
         child: Row(
           children: [
@@ -880,12 +1181,30 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: Colors.black38, fontSize: 10, fontWeight: FontWeight.w800)),
-                Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: _mutedOnSurface(context, 0.55),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
               ],
             ),
             const Spacer(),
-            const Icon(LucideIcons.chevronRight, size: 16, color: Colors.black26),
+            Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: _mutedOnSurface(context, 0.32),
+            ),
           ],
         ),
       ),

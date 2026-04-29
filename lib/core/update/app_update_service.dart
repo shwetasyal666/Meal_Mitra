@@ -17,17 +17,24 @@ class AppUpdateService {
 
   Future<AppUpdateInfo?> checkForUpdate() async {
     final packageInfo = await PackageInfo.fromPlatform();
-    final currentVersion = packageInfo.version;
+    final currentVersion = parseInstalledVersion(
+      appVersion: packageInfo.version,
+      buildNumber: packageInfo.buildNumber,
+    );
     final remote = await _fetchRemoteRelease();
 
     if (remote == null) return null;
-    if (compareVersions(currentVersion, remote.version) >= 0) {
+    if (compareReleaseVersions(currentVersion, remote.version) >= 0) {
       return null;
     }
 
     return AppUpdateInfo(
-      currentVersion: currentVersion,
-      latestVersion: remote.version,
+      currentLabel: currentVersion.label,
+      latestLabel: remote.version.label,
+      currentVersion: currentVersion.appVersion,
+      currentBuildNumber: currentVersion.buildNumber,
+      latestVersion: remote.version.appVersion,
+      latestBuildNumber: remote.version.buildNumber,
       mandatory: remote.mandatory,
       notes: remote.notes,
       apkUrl: remote.apkUrl,
@@ -54,7 +61,9 @@ class AppUpdateService {
     }
 
     final directory = await getTemporaryDirectory();
-    final file = File('${directory.path}/mealmitra-${update.latestVersion}.apk');
+    final file = File(
+      '${directory.path}/mealmitra-${update.latestVersion}-build-${update.latestBuildNumber}.apk',
+    );
     if (await file.exists()) {
       await file.delete();
     }
@@ -85,32 +94,10 @@ class AppUpdateService {
   }
 
   Future<_RemoteRelease?> _fetchRemoteRelease() async {
-    if (AppConfig.updateManifestUrl.isNotEmpty) {
-      return _fetchHostedManifest(AppConfig.updateManifestUrl);
-    }
     if (AppConfig.githubRepo.isNotEmpty) {
       return _fetchGitHubRelease(AppConfig.githubRepo);
     }
     return null;
-  }
-
-  Future<_RemoteRelease> _fetchHostedManifest(String manifestUrl) async {
-    final response = await _client
-        .get(Uri.parse(manifestUrl))
-        .timeout(const Duration(seconds: 15));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Update manifest request failed (${response.statusCode}).');
-    }
-
-    final payload = jsonDecode(response.body) as Map<String, dynamic>;
-    return _RemoteRelease(
-      version: payload['version']?.toString() ?? '',
-      mandatory: payload['mandatory'] == true,
-      notes: payload['notes']?.toString() ?? '',
-      apkUrl: payload['apkUrl']?.toString() ?? '',
-      releaseUrl: payload['releaseUrl']?.toString() ?? '',
-      publishedAt: DateTime.tryParse(payload['publishedAt']?.toString() ?? ''),
-    );
   }
 
   Future<_RemoteRelease> _fetchGitHubRelease(String repo) async {
@@ -126,15 +113,27 @@ class AppUpdateService {
     }
 
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final tagName = payload['tag_name']?.toString() ?? '';
+    final releaseVersion = parseGitHubReleaseTag(tagName);
+    if (releaseVersion == null) {
+      throw Exception(
+        'Latest GitHub release tag "$tagName" does not match the expected pattern '
+        '`v<version>-build-<number>` from the CI workflow.',
+      );
+    }
+
     final assets = (payload['assets'] as List<dynamic>? ?? const []);
     final apkAsset = assets.cast<Map<String, dynamic>?>().firstWhere(
-          (asset) => asset != null && (asset['name']?.toString().endsWith('.apk') ?? false),
+          (asset) =>
+              asset != null &&
+              (asset['name']?.toString().startsWith('MealMitra-') ?? false) &&
+              (asset['name']?.toString().endsWith('.apk') ?? false),
           orElse: () => null,
         );
 
     final body = payload['body']?.toString() ?? '';
     return _RemoteRelease(
-      version: payload['tag_name']?.toString() ?? '',
+      version: releaseVersion,
       mandatory: _parseMandatory(body),
       notes: _stripMandatoryMarkers(body),
       apkUrl: apkAsset?['browser_download_url']?.toString() ?? '',
@@ -169,7 +168,7 @@ class _RemoteRelease {
     this.publishedAt,
   });
 
-  final String version;
+  final ReleaseVersion version;
   final bool mandatory;
   final String notes;
   final String apkUrl;

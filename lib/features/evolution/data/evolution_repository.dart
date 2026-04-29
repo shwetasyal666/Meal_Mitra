@@ -11,23 +11,24 @@ import 'package:mealmitra/features/evolution/domain/evolution_data.dart';
 import 'package:mealmitra/features/profile/data/profile_repository.dart';
 import 'package:mealmitra/features/profile/domain/user_profile.dart';
 
-final evolutionRepositoryProvider = Provider.family<EvolutionRepository, _EvolutionRepositoryArgs>((ref, args) {
-  return EvolutionRepository(
-    ref.watch(apiClientProvider),
-    uid: args.uid,
-    profile: args.profile,
-  );
-});
+final evolutionRepositoryProvider =
+    Provider.family<EvolutionRepository, _EvolutionRepositoryArgs>((ref, args) {
+      return EvolutionRepository(
+        ref.watch(apiClientProvider),
+        uid: args.uid,
+        profile: args.profile,
+      );
+    });
 
-final evolutionDataProvider = FutureProvider.autoDispose<EvolutionData>((ref) async {
-  final uid = await ref.watch(authStateProvider.future).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => null,
-      );
-  final profile = await ref.watch(currentProfileProvider.future).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => null,
-      );
+final evolutionDataProvider = FutureProvider.autoDispose<EvolutionData>((
+  ref,
+) async {
+  final uid = await ref
+      .watch(authStateProvider.future)
+      .timeout(const Duration(seconds: 10), onTimeout: () => null);
+  final profile = await ref
+      .watch(currentProfileProvider.future)
+      .timeout(const Duration(seconds: 10), onTimeout: () => null);
 
   final repository = ref.watch(
     evolutionRepositoryProvider(
@@ -52,7 +53,9 @@ class EvolutionRepository {
   Future<EvolutionData> fetchEvolutionData() async {
     try {
       if (AppConfig.useFirebase) {
-        return _fetchFirebaseEvolutionData().timeout(const Duration(seconds: 12));
+        return _fetchFirebaseEvolutionData().timeout(
+          const Duration(seconds: 12),
+        );
       }
 
       final response = await _apiClient.get('/profile/evolution');
@@ -80,29 +83,8 @@ class EvolutionRepository {
     ).subtract(Duration(days: now.weekday - 1));
     final weightCutoff = now.subtract(const Duration(days: 35));
 
-    final weightDocs = await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('weight_history')
-        .orderBy('recordedAt')
-        .get()
-        .timeout(const Duration(seconds: 12));
-
-    final weightHistory = weightDocs.docs
-        .map((doc) => WeightPoint.fromMap(doc.data()))
-        .where((point) => !point.date.isBefore(weightCutoff))
-        .toList();
-
-    final mealsDocs = await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('meals')
-        .where(
-          'capturedAt',
-          isGreaterThanOrEqualTo: weekStart.toIso8601String(),
-        )
-        .get()
-        .timeout(const Duration(seconds: 12));
+    final weightHistory = await _fetchWeightHistory(weightCutoff);
+    final mealsData = await _fetchMealsSince(weekStart);
 
     final caloriesByDay = <String, int>{};
     final healthConcernByDay = <String, _HealthConcernDay>{};
@@ -112,8 +94,7 @@ class EvolutionRepository {
     var totalCarbs = 0;
     var totalFat = 0;
 
-    for (final doc in mealsDocs.docs) {
-      final data = doc.data();
+    for (final data in mealsData) {
       final capturedAt = data['capturedAt'] as String?;
       if (capturedAt == null) continue;
 
@@ -142,7 +123,7 @@ class EvolutionRepository {
     }
 
     final healthConcernData = _buildHealthConcernData(
-      mealsDocs.docs.map((doc) => doc.data()).toList(),
+      mealsData,
       healthConcernByDay,
       totalCalories,
       totalProtein,
@@ -208,12 +189,14 @@ class EvolutionRepository {
     }
 
     final breakdown = healthConcernByDay.values
-        .map((e) => MealConcernBreakdown(
-              date: e.date,
-              healthy: e.healthy,
-              moderate: e.moderate,
-              avoid: e.avoid,
-            ))
+        .map(
+          (e) => MealConcernBreakdown(
+            date: e.date,
+            healthy: e.healthy,
+            moderate: e.moderate,
+            avoid: e.avoid,
+          ),
+        )
         .toList();
 
     String dominantConcern = 'moderate';
@@ -227,7 +210,9 @@ class EvolutionRepository {
       healthyMeals: healthyMeals,
       moderateMeals: moderateMeals,
       avoidMeals: avoidMeals,
-      averageCalories: loggedMealCount > 0 ? totalCalories / loggedMealCount : 0,
+      averageCalories: loggedMealCount > 0
+          ? totalCalories / loggedMealCount
+          : 0,
       averageProtein: loggedMealCount > 0 ? totalProtein / loggedMealCount : 0,
       averageCarbs: loggedMealCount > 0 ? totalCarbs / loggedMealCount : 0,
       averageFat: loggedMealCount > 0 ? totalFat / loggedMealCount : 0,
@@ -235,13 +220,66 @@ class EvolutionRepository {
       breakdown: breakdown,
     );
   }
+
+  Future<List<WeightPoint>> _fetchWeightHistory(DateTime weightCutoff) async {
+    try {
+      final weightDocs = await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('weight_history')
+          .orderBy('recordedAt')
+          .get()
+          .timeout(const Duration(seconds: 8));
+
+      return weightDocs.docs
+          .map((doc) => WeightPoint.fromMap(doc.data()))
+          .where((point) => !point.date.isBefore(weightCutoff))
+          .toList();
+    } on FirebaseException catch (error) {
+      if (_canUseProfileFallback(error)) {
+        return const [];
+      }
+      rethrow;
+    } on TimeoutException {
+      return const [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchMealsSince(
+    DateTime weekStart,
+  ) async {
+    try {
+      final mealsDocs = await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('meals')
+          .where(
+            'capturedAt',
+            isGreaterThanOrEqualTo: weekStart.toIso8601String(),
+          )
+          .get()
+          .timeout(const Duration(seconds: 8));
+
+      return mealsDocs.docs.map((doc) => doc.data()).toList();
+    } on FirebaseException catch (error) {
+      if (_canUseProfileFallback(error)) {
+        return const [];
+      }
+      rethrow;
+    } on TimeoutException {
+      return const [];
+    }
+  }
+
+  bool _canUseProfileFallback(FirebaseException error) {
+    return error.code == 'permission-denied' ||
+        error.code == 'unavailable' ||
+        error.code == 'deadline-exceeded';
+  }
 }
 
 class _EvolutionRepositoryArgs {
-  const _EvolutionRepositoryArgs({
-    required this.uid,
-    required this.profile,
-  });
+  const _EvolutionRepositoryArgs({required this.uid, required this.profile});
 
   final String? uid;
   final UserProfile? profile;
