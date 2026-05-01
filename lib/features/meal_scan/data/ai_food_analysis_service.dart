@@ -33,17 +33,41 @@ class AiFoodAnalysisService {
     required XFile imageFile,
     String? imageUrl,
   }) async {
-    final payload = AppConfig.foodAiProxyUrl.trim().isNotEmpty
-        ? await _analyzeWithProxy(
-            mealType: mealType,
-            imageFile: imageFile,
-            imageUrl: imageUrl,
-          )
-        : await _analyzeWithOpenRouter(
-            mealType: mealType,
-            imageFile: imageFile,
-            imageUrl: imageUrl,
-          );
+    final providers = ['openrouter', 'gemini', 'openai'];
+    Map<String, dynamic>? payload;
+    FoodAnalysisException? lastError;
+
+    for (final provider in providers) {
+      try {
+        payload = switch (provider) {
+          'openai' => await _analyzeWithOpenAI(
+              mealType: mealType,
+              imageFile: imageFile,
+              imageUrl: imageUrl,
+            ),
+          'gemini' => await _analyzeWithGemini(
+              mealType: mealType,
+              imageFile: imageFile,
+              imageUrl: imageUrl,
+            ),
+          _ => await _analyzeWithOpenRouter(
+              mealType: mealType,
+              imageFile: imageFile,
+              imageUrl: imageUrl,
+            ),
+        };
+        lastError = null;
+        break;
+      } on FoodAnalysisException catch (e) {
+        lastError = e;
+        continue;
+      }
+    }
+
+    if (payload == null) {
+      throw lastError ??
+          const FoodAnalysisException('All AI providers failed. Please try again later.');
+    }
 
     return _analysisFromPayload(
       payload,
@@ -52,6 +76,167 @@ class AiFoodAnalysisService {
       capturedAtIso: capturedAtIso,
       imageUrl: imageUrl,
     );
+  }
+
+  Future<Map<String, dynamic>> _analyzeWithOpenAI({
+    required String mealType,
+    required XFile imageFile,
+    String? imageUrl,
+  }) async {
+    final apiKey = AppConfig.openaiApiKey.trim();
+    if (apiKey.isEmpty) {
+      throw const FoodAnalysisException(
+        'Food AI is not configured. Add OPENAI_API_KEY.',
+      );
+    }
+
+    final imageSource = imageUrl != null && imageUrl.isNotEmpty
+        ? imageUrl
+        : await _imageDataUrl(imageFile);
+
+    final body = <String, dynamic>{
+      'model': AppConfig.openaiModel,
+      'temperature': 0.1,
+      'max_tokens': 1200,
+      'messages': [
+        {
+          'role': 'system',
+          'content':
+              'You are MealMitra, a careful food image analyst. Return only valid JSON. Never invent foods that are not visible.',
+        },
+        {
+          'role': 'user',
+          'content': [
+            {'type': 'text', 'text': _foodAnalysisPrompt(mealType)},
+            {
+              'type': 'image_url',
+              'image_url': {'url': imageSource, 'detail': 'low'},
+            },
+          ],
+        },
+      ],
+      'response_format': {'type': 'json_object'},
+    };
+
+    final response = await _client
+        .post(
+          Uri.parse('https://api.openai.com/v1/chat/completions'),
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 60));
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return _decodeAiResponse(response.body);
+    }
+
+    throw FoodAnalysisException(
+      'Food AI failed (${response.statusCode}). Please try again.',
+    );
+  }
+
+  Future<Map<String, dynamic>> _analyzeWithGemini({
+    required String mealType,
+    required XFile imageFile,
+    String? imageUrl,
+  }) async {
+    final apiKey = AppConfig.geminiApiKey.trim();
+    if (apiKey.isEmpty) {
+      throw const FoodAnalysisException(
+        'Food AI is not configured. Add GEMINI_API_KEY.',
+      );
+    }
+
+    final bytes = await imageFile.readAsBytes();
+    final base64Image = base64Encode(bytes);
+
+    final body = <String, dynamic>{
+      'contents': [
+        {
+          'parts': [
+            {'text': _foodAnalysisPrompt(mealType)},
+            {
+              'inline_data': {
+                'mime_type': 'image/jpeg',
+                'data': base64Image,
+              },
+            },
+          ],
+        },
+      ],
+      'generationConfig': {
+        'temperature': 0.1,
+        'maxOutputTokens': 1200,
+        'responseMimeType': 'application/json',
+      },
+    };
+
+    final response = await _client
+        .post(
+          Uri.parse(
+            'https://generativelanguage.googleapis.com/v1beta/models/${AppConfig.geminiModel}:generateContent?key=$apiKey',
+          ),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 60));
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return _decodeGeminiResponse(response.body);
+    }
+
+    throw FoodAnalysisException(
+      'Food AI failed (${response.statusCode}). Please try again.',
+    );
+  }
+
+  Map<String, dynamic> _decodeGeminiResponse(String body) {
+    final decoded = jsonDecode(body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FoodAnalysisException(
+        'Food AI returned an invalid response.',
+      );
+    }
+
+    final candidates = decoded['candidates'];
+    if (candidates is! List || candidates.isEmpty) {
+      throw const FoodAnalysisException('Food AI returned no analysis.');
+    }
+
+    final firstCandidate = candidates.first;
+    if (firstCandidate is! Map) {
+      throw const FoodAnalysisException('Food AI returned an invalid candidate.');
+    }
+
+    final content = firstCandidate['content'];
+    if (content is! Map) {
+      throw const FoodAnalysisException('Food AI returned invalid content.');
+    }
+
+    final parts = content['parts'];
+    if (parts is! List || parts.isEmpty) {
+      throw const FoodAnalysisException('Food AI returned empty content.');
+    }
+
+    final firstPart = parts.first;
+    if (firstPart is! Map) {
+      throw const FoodAnalysisException('Food AI returned an invalid part.');
+    }
+
+    final text = firstPart['text'];
+    if (text is! String || text.isEmpty) {
+      throw const FoodAnalysisException('Food AI returned empty text.');
+    }
+
+    final jsonText = _extractJsonObject(text);
+    final payload = jsonDecode(jsonText);
+    if (payload is! Map<String, dynamic>) {
+      throw const FoodAnalysisException('Food AI returned invalid meal JSON.');
+    }
+    return payload;
   }
 
   Future<Map<String, dynamic>> _analyzeWithProxy({

@@ -10,6 +10,7 @@ import 'package:mealmitra/features/profile/data/profile_repository.dart';
 import 'package:mealmitra/features/meal_history/presentation/widgets/meal_details_sheet.dart';
 import 'package:mealmitra/features/meal_history/domain/meal_record.dart';
 import 'package:mealmitra/features/dashboard/presentation/widgets/recommendations_sheet.dart';
+import 'package:mealmitra/features/water_tracker/presentation/water_tracker_card.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -132,6 +133,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
 
                         // Greeting + calorie card
                         _buildCalorieCard(profile, summary),
+                        const SizedBox(height: 32),
+
+                        // Water Tracker
+                        _buildWaterTracker(profile),
                         const SizedBox(height: 32),
 
                         // Recent scans header
@@ -530,6 +535,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildWaterTracker(AsyncValue<dynamic> profile) {
+    return profile.when(
+      data: (value) {
+        if (value == null) return const SizedBox.shrink();
+        return WaterTrackerCard(profile: value);
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (e, s) => const SizedBox.shrink(),
     );
   }
 

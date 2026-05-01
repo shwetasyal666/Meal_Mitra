@@ -44,6 +44,40 @@ class AppConfig {
   static String get foodAiModel =>
       _foodAiModel.trim().isEmpty ? 'openrouter/free' : _foodAiModel;
 
+  /// Direct Gemini API key for vision-based food analysis.
+  static const String geminiApiKey = String.fromEnvironment(
+    'GEMINI_API_KEY',
+    defaultValue: '',
+  );
+
+  static const String _geminiModel = String.fromEnvironment(
+    'GEMINI_MODEL',
+    defaultValue: 'gemini-2.0-flash',
+  );
+  static String get geminiModel =>
+      _geminiModel.trim().isEmpty ? 'gemini-2.0-flash' : _geminiModel;
+
+  /// AI provider selection: openai, gemini, openrouter, or proxy.
+  static const String _foodAiProvider = String.fromEnvironment(
+    'FOOD_AI_PROVIDER',
+    defaultValue: 'gemini',
+  );
+  static String get foodAiProvider =>
+      _foodAiProvider.trim().isEmpty ? 'gemini' : _foodAiProvider;
+
+  /// Direct OpenAI API key for vision-based food analysis.
+  static const String openaiApiKey = String.fromEnvironment(
+    'OPENAI_API_KEY',
+    defaultValue: '',
+  );
+
+  static const String _openaiModel = String.fromEnvironment(
+    'OPENAI_MODEL',
+    defaultValue: 'gpt-4o-mini',
+  );
+  static String get openaiModel =>
+      _openaiModel.trim().isEmpty ? 'gpt-4o-mini' : _openaiModel;
+
   /// Google Sign-In Client ID for Web.
   static const String googleWebClientId = String.fromEnvironment(
     'GOOGLE_WEB_CLIENT_ID',

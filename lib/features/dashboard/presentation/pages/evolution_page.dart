@@ -47,6 +47,8 @@ class EvolutionPage extends ConsumerWidget {
                     const SizedBox(height: 32),
                     Text(
                       "Weight Evolution",
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.headlineLarge?.copyWith(
                         fontWeight: FontWeight.w900,
                         fontSize: 34,
@@ -54,8 +56,12 @@ class EvolutionPage extends ConsumerWidget {
                     ),
                     Text(
                       'Your journey over the last 35 days',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.55,
+                        ),
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -253,6 +259,8 @@ class EvolutionPage extends ConsumerWidget {
             chartPoints.length <= 2 && evolution.weightHistory.length <= 1
                 ? 'Log another weight update to reveal a fuller trajectory.'
                 : _weightTrajectoryMessage(profile, progress),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.black38,
               fontSize: 11,
@@ -319,27 +327,32 @@ class EvolutionPage extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Weekly Caloric',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                  const Text(
-                    'Baseline',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      color: Colors.black38,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Weekly Caloric Baseline',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.black38,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const Spacer(),
               Container(
@@ -470,7 +483,7 @@ class EvolutionPage extends ConsumerWidget {
                 summary,
                 style: const TextStyle(
                   color: Colors.black45,
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -512,24 +525,24 @@ class EvolutionPage extends ConsumerWidget {
     final healthData = evolution.healthConcernData;
     final healthScore = healthData.healthScore;
     final totalMeals = healthData.totalMeals;
-    
+
     final scoreColor = healthScore >= 0.7
         ? const Color(0xFF027B3D)
         : healthScore >= 0.4
-            ? const Color(0xFFF59E0B)
-            : Colors.red;
-    
+        ? const Color(0xFFF59E0B)
+        : Colors.red;
+
     final scoreLabel = healthScore >= 0.7
         ? 'Excellent'
         : healthScore >= 0.4
-            ? 'Good'
-            : 'Needs Work';
-    
+        ? 'Good'
+        : 'Needs Work';
+
     final dominatLabel = healthData.dominantConcern == 'healthy'
         ? 'Healthy Choices'
         : healthData.dominantConcern == 'avoid'
-            ? 'Limit These'
-            : 'Moderate Choices';
+        ? 'Limit These'
+        : 'Moderate Choices';
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -549,10 +562,7 @@ class EvolutionPage extends ConsumerWidget {
                 children: [
                   const Text(
                     'Meal Health Analysis',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -578,11 +588,7 @@ class EvolutionPage extends ConsumerWidget {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      LucideIcons.heart,
-                      color: scoreColor,
-                      size: 16,
-                    ),
+                    Icon(LucideIcons.heart, color: scoreColor, size: 16),
                     const SizedBox(width: 6),
                     Text(
                       scoreLabel,
@@ -655,30 +661,42 @@ class EvolutionPage extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Avg: ${healthData.averageCalories.toStringAsFixed(0)} kcal',
-                  style: const TextStyle(
-                    color: Colors.black45,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    'Avg: ${healthData.averageCalories.toStringAsFixed(0)} kcal',
+                    style: const TextStyle(
+                      color: Colors.black45,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text(
-                  dominatLabel,
-                  style: const TextStyle(
-                    color: Colors.black45,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    dominatLabel,
+                    style: const TextStyle(
+                      color: Colors.black45,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                   ),
                 ),
-                Text(
-                  'P: ${healthData.averageProtein.toStringAsFixed(0)}g  C: ${healthData.averageCarbs.toStringAsFixed(0)}g  F: ${healthData.averageFat.toStringAsFixed(0)}g',
-                  style: const TextStyle(
-                    color: Colors.black45,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    'P: ${healthData.averageProtein.toStringAsFixed(0)}g | C: ${healthData.averageCarbs.toStringAsFixed(0)}g | F: ${healthData.averageFat.toStringAsFixed(0)}g',
+                    style: const TextStyle(
+                      color: Colors.black45,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
                   ),
                 ),
               ],
@@ -690,7 +708,9 @@ class EvolutionPage extends ConsumerWidget {
   }
 
   Widget _buildHealthStatItem(String label, int count, Color color, int total) {
-    final percentage = total > 0 ? (count / total * 100).toStringAsFixed(0) : '0';
+    final percentage = total > 0
+        ? (count / total * 100).toStringAsFixed(0)
+        : '0';
     return Column(
       children: [
         Container(
@@ -816,6 +836,8 @@ class EvolutionPage extends ConsumerWidget {
                       Expanded(
                         child: Text(
                           ach['label'] as String,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 12,
@@ -1095,10 +1117,7 @@ class _EvolutionAsyncFallback extends StatelessWidget {
 }
 
 class _EvolutionEmptyState extends StatelessWidget {
-  const _EvolutionEmptyState({
-    required this.title,
-    required this.message,
-  });
+  const _EvolutionEmptyState({required this.title, required this.message});
 
   final String title;
   final String message;
@@ -1120,11 +1139,17 @@ class _EvolutionEmptyState extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(LucideIcons.circleUser, size: 40, color: Color(0xFF027B3D)),
+              const Icon(
+                LucideIcons.circleUser,
+                size: 40,
+                color: Color(0xFF027B3D),
+              ),
               const SizedBox(height: 16),
               Text(
                 title,
-                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
